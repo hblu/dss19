@@ -1,0 +1,76 @@
+---
+title: "Decision Support Systems and Bussiness Intelligence"
+subtitle: "Syllabus"
+author: "Haibo Lu"
+date: "`r Sys.Date()`"
+output:
+  tufte::tufte_html: default
+  tufte::tufte_handout:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_book:
+    citation_package: natbib
+    latex_engine: xelatex
+link-citations: yes
+---
+
+```{r setup, include=FALSE}
+library(tufte)
+# invalidate cache when the tufte version changes
+knitr::opts_chunk$set(tidy = FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+# Course Description
+
+A decision support system (DSS) is a computer system that encompasses
+
+- **informational databases**
+- **mathematical models**
+- **user interface** 
+
+to help managers make better decisions. This course is intended to develop an appreciation of the nature of managerial business decision making as well as a working knowledge of Decision Support Systems (DSS) for facilitating the process of **semi-structured decision making**. Issues associated with the development of these systems are introduced, along with some of the underlying **mathematical modelling techniques** that provide DSS with a problem solving capability.
+
+# Pre-requisite Courses and Assumed Knowledge and Capabilities
+
+This course assumes that you have:
+
+- fundemental mathematical and statistics
+
+
+# Overview of Learning Activities
+
+In order to develop the stated course capabilities, you are expected to actively participate in the following learning activities: 
+
+- Regular attendance and active participation in scheduled lectures and workshops.
+- Reading of course notes and other assigned reading materials. 
+- Satisfactory completion of assessment tasks. 
+
+While a minimum attendance standard is not compulsory in this course, satisfactory completion of the program is required. Most students will find that regular class attendance is needed to achieve the necessary standard to pass this course.
+
+
+# Text and Readings
+
+- [Business Intelligence and Analysis: Systems for Decision Support (10th)](book/Business_Intelligence_and_Analytics_Systems_for_Decision_10.pdf)
+- [Data Mining For Bussiness Intelligence](book/DATA MINING For Bussiness Intelligence.zip)
+- [R for Data Science](https://r4ds.had.co.nz/)
+- [An Introduction to Statistical Learning with applications in R](book/An introduction to statistical learning with applications in R.pdf)
+- [The Elements of Statistical Learning (Data Mining, Inference, and Prediction)](book/ESLII_print10.pdf)
+
+# Schedule
+
+- Week 1: Overview of Statistical Learning, Linear Regression
+- Week 2: Linear Regression (Model Selection)
+- Week 3: Classification
+- Week 4: SVM \& Tree Based Methods
+- Week 5: Time Series Analysis
+- Week 6: Social Network
+- Week 7: Deep Neural Networks
+- Week 8: Nature Language Process
+
+# Further Reading
+
+- Business Intelligence and Analysis: Systems for Decision Support --- Chapter 1-2
+- [Model-driven decision support systems: Concepts and research directions](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.469.7858&rep=rep1&type=pdf)
+
+

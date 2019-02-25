@@ -1,0 +1,407 @@
+---
+title: "An Overview of Statistical Learning"
+author: "Lu Haibo"
+date: "Mondy, Feb 25, 2019"
+header-includes:
+   - \usepackage{rotating}
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{array}
+   - \usepackage{multirow}
+   - \usepackage{wrapfig}
+   - \usepackage{float}
+   - \usepackage{colortbl}
+   - \usepackage{pdflscape}
+   - \usepackage{tabu}
+   - \usepackage{threeparttable}
+   - \usepackage{threeparttablex}
+   - \usepackage[normalem]{ulem}
+   - \usepackage{makecell}
+   - \usepackage{xcolor}
+   - \usepackage{subfig}
+output:
+  tufte::tufte_handout:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_html: default
+  tufte::tufte_book:
+    citation_package: natbib
+    latex_engine: xelatex
+link-citations: yes
+
+---
+
+```{r setup, include=FALSE}
+library(tufte)
+library(knitr)
+library(kableExtra)
+# invalidate cache when the tufte version changes
+knitr::opts_chunk$set(tidy = FALSE, echo=FALSE, message=FALSE, warning=FALSE, cache.extra = packageVersion('tufte'), fig.width=6, fig.height=4, fig.align='center')
+options(htmltools.dir.version = FALSE, xtable.comment = FALSE)
+
+kable <- function(data, ...) {
+  knitr::kable(data, booktabs = TRUE, digits = 2,  ...)
+}
+
+```
+
+
+# What is Statistical Learning?
+
+
+*Statistical learning* refers to a vast set of tools for *understanding data*
+
+* supervised
+    - predicting an *output* based on *inputs*
+* unsupervised
+    - there are inputs but no supervising output, learn *relationships* and *structure*
+
+# Main Problems In Statistical Learning
+
+- *Regression* problem
+    - predict a *continuous* or *quantitative* output
+- *Classification* problem
+    - predict a *categorical* or *qualitative* output
+- *Clustering* problem
+    - not trying to predict an output variable
+
+## Example:
+
+- Wage Data
+
+Wish to understand the association between an employee's `age` and `education`, as well as the calender `year`, on his `wage`.
+
+```{r, results='asis'}
+library(tidyverse)
+library(ISLR)
+library(ggplot2)
+library(gridExtra)
+
+
+data(Wage)
+Wage %>% 
+  select(year, age, education, wage) %>% 
+  head() %>%
+  kable()
+```
+
+
+```{r, fig.height = 10}
+
+g1 <- ggplot(Wage, aes(age, wage))+geom_point(color="darkgray")+geom_smooth(method="loess", se=F, color="darkblue")
+
+g2 <- ggplot(Wage, aes(year, wage))+geom_point(color="darkgray")+geom_smooth(method="lm", se=F, color="darkblue")
+
+g3 <-ggplot(Wage, aes(education, wage))+geom_boxplot(aes(fill=education))+guides(fill=F)
+
+grid.arrange(g1,g2,g3, nrow = 3)
+```
+
+- Stock Market Data
+
+We wish to predict whether the index will *increase* or *decrease* on a given day using the past 5 days' percentage changes in the index.
+
+```{r,results='asis', fig.width=10}
+data(Smarket)
+
+Smarket %>% head() %>% kable()
+
+g1 <- ggplot(Smarket, aes(Direction, Lag1))+geom_boxplot(aes(fill=Direction)) + guides(fill=FALSE)
+g2 <- ggplot(Smarket, aes(Direction, Lag2))+geom_boxplot(aes(fill=Direction)) + guides(fill=FALSE)
+g3 <- ggplot(Smarket, aes(Direction, Lag3))+geom_boxplot(aes(fill=Direction)) + guides(fill=FALSE)
+
+grid.arrange(g1,g2,g3,ncol=3)
+```
+
+- Gene Expression Data
+
+We consider the `NCI60` data set, which consists of 6830 gene expression measurements for each of 64 cancer cell lines. Instead of predicting a particular output variable, we are interested in determining whether there are groups, or clusters, among the cell lines based on their gene expression measurements.
+
+```{r, fig.cap="Representation of the NCI60 gene expression data set in a two-dimensional space, PC1 and PC2."}
+
+data(NCI60)
+
+pr.out <- prcomp(NCI60$data, scale=T)
+
+ggplot(data.frame(x=pr.out$x[,1], y=pr.out$x[,2]), aes(x,y))+geom_point()+xlab("PC1")+ylab("PC2")
+```
+
+
+
+# What Is Statistical Learning?
+
+Example: To develop an accurate model that can be used to predict sales on the basis of the three median budgets.
+
+```{r, results='asis'}
+
+adv <- read_csv("data/Advertising.csv") %>%   
+  select(-X1) 
+
+adv %>% 
+  head() %>% 
+  kable()
+```
+
+```{r, fig.width=9, fig.cap="Simple least squares fit of sales to each predictor"}
+
+g1 <- ggplot(adv, aes(y = Sales)) +
+  geom_point(aes(TV)) + geom_smooth(aes(TV), se = F, method = "lm")
+
+g2 <- ggplot(adv, aes(y = Sales)) +
+  geom_point(aes(Radio)) + geom_smooth(aes(Radio), se = F, method = "lm")
+
+g3 <- ggplot(adv, aes(y = Sales)) +
+  geom_point(aes(Newspaper)) + geom_smooth(aes(Newspaper), se = F, method = "lm")
+
+
+grid.arrange(g1, g2, g3, ncol = 3)
+```
+
+- *input variables*: advertising budgets, `TV`, `Radio`, `Newspaper`
+    - typically denoted as $X$
+    - predictor, independent variables, features
+- *output variables*: `sales`
+    - typically denoted as $Y$
+    - response, dependent variable
+
+
+Suppose that we observe a quantitative response $Y$ and $p$ different predictors, $X_1, X_2, \ldots, X_p$. We assume that there is some relationship between $Y$ and $X=(X_1,X_2,\ldots,X_p)$, which can be written in the very general form
+$$
+Y=f(X)+\epsilon
+$$
+
+- $f$ is some **fixed but unknown** function of $X_1,X_2,\ldots,X_p$
+- $\epsilon$ is a random *error term*, which is independent of $X$ and has mean zero
+- In essence, statistical learning refers to a set of approaches for estimating $f$.
+
+# Why Estimate $f$?
+
+Two main reasons that we may wish to estimate $f$
+
+- *Prediction*
+    - a set of inputs $X$ are readily available, but the output $Y$ cannot be easily obtained, since the error term has mean zero, we can predict $Y$ using
+    $$
+    \hat Y=\hat f(X)
+    $$
+    - $\hat f$ treated as a *black box*
+    - don't concern the exact form of $\hat f$, provided that it yields accurate predictions for $Y$
+    - the accuracy of $\hat Y$ depends on two quantities
+        - *reducible error*: $\hat f$ do not estimate $f$ perfectly
+        - *irreducible error*: even if we estimate $f$ perfectly, so that $\hat Y=f(X)$, there is still some error from $\epsilon$ that cannot be predicted using $X$
+    - Why irreducible error? $\epsilon$ may contain
+        - unmeasured variables that are useful in predicting $Y$, and we don't measure them
+        - unmeasurable variation
+    - Consider a given estimate $\hat f$ and a set of predictors $X$, which yields the prediction $\hat Y=\hat f(X)$, then
+    $$
+    \begin{split}
+    E(Y-\hat Y)^2 &= E[f(X)+\epsilon-\hat f(X)]^2\\
+    &=\underbrace{[f(X)-\hat f(X)]^2}_{Reducible}+\underbrace{Var(\epsilon)}_{Irreducible}
+    \end{split}
+    $$
+    
+- *Inference*
+    - our goal is not necessarily to make predictions for $Y$, but to understand how $Y$ chages as a function of $X_1,\ldots,X_p$.
+    - $\hat f$ cannot be treated as a black box, we need to know its exact form
+    - one may be interested in answering
+        - *Which predictors are associated with the response?*: Identifying the important predictors among a large set of possible variables.
+        - *What is the relationship between the response and each predictor?*: negative, positive, linear, nonlinear...
+        - *Can the relationship between* $Y$ *and eachpredictor be adequately summarized using a linear equation, or is the relationship more complicated?*
+        
+# How Do We Estimate $f$?
+
+- *training data*: observations, $\{(x_1,y_1),(x_2,y_2),\ldots,(x_n,y_n)\}$ where $x_i=(x_{i1}, x_{i2},\ldots,x_{ip})$, we will use to train, or teach, our method how to estimate $f$
+- statistical learning methods for find a function $\hat f$ such that $Y\approx\hat f(X)$
+    - Parametric Methods
+        - make an assumption about the functional form of $f$.  For example:
+        $$
+        f(X)=\beta_0+\beta_1X_1+\cdots+\beta_pX_p
+        $$
+        - instead of estimating an entirely arbitrary function $f(X)$, one only needs to estimate the $p+1$ coefficients $\beta_0,\beta_1,\ldots,\beta_p$
+        - the potential disadvantage of a parametric approach is that the model we choose will usually not match the true unknown form of $f$
+        - *flexibility*
+            - a less flexible model: poor estimate
+            - a more flexible model: *overfitting*, follow the errors, or *noise*, too closely
+
+```{r,echo=FALSE, fig.cap="The green curve represent the true underlying relationship $f(X)=1+2x^3$. The red line represent the simple linear regression line. The black curve represent the loess curve. The darkblue curve is a bspline regression with df=30."}
+library(splines)
+set.seed(1)
+x <- sort(runif(50, -2, 2))
+y <- 1+2*x^3
+y.obs <- y+rnorm(50, sd=2)
+
+ggplot(data.frame(x=x, y=y.obs), aes(x,y))+
+  geom_line(data = data.frame(x=x, y=y), aes(x,y), color="red")+
+  geom_point()+
+  geom_smooth(method="loess", se=F, color="black")+
+  geom_smooth(method="lm", se=F, color="gray")+
+  geom_smooth(method="lm", se=F, formula= y~bs(x,30), n=200, color="darkblue")
+
+```
+
+    - Non-parametric Methods
+        - do not make explicit assumptions about the functional form of $f$
+        - seek an estimate of $f$ that gets as close to the data points as possible without being too rough or wiggly
+        - avoid the assumption of a particular functional form for $f$
+        - since they do not reduce the problem of estimating f to a small number of parameters, a very large number of observations is required in order to obtain an accurate estimate for $f$
+        - overfitting: should select a level of smoothness
+
+
+## The Trade-Off Between Prediction Accuracy and Model Interpretability
+
+
+- *Why would we ever choose to use a more restrictive method instead of a very flexible approach?*
+    - when inference is the goal, restrictive models are much more interpretable.
+    - even if we were only interested in prediction, we will often obtain more accurate predictions using a less flexible method. (the potential for overfitting in highly flexible methods)
+    
+\begin{figure}
+\centerline{\includegraphics[width=0.6\textwidth]{ISLR/Chapter2/7.pdf}}
+\caption{A representation of the trade off between flexibility and interpretability, using different statistical learning methods. In general, as the flexibility of a method increases, its interpretability decreases.}
+\end{figure}
+
+
+
+# Assessing Model Accuracy
+
+- *There is no one method dominates all other over all possible data sets.* 
+- It's important to decide for any given set of data which method produces the best result.
+
+## Measuring The Quality of Fit
+
+- *mean squared error* (MSE): the most commonly-used measure in the regression setting
+    $$
+    MSE=\frac1n\sum_{i=1}^n(y_i-\hat f(x_i))^2
+    $$
+- *training MSE*: the MSE computed using the training data that was used to fit the model
+- *test MSE*: the MSE computed using the test data that was not used to train the model
+- select the model for which has the smallest test MSE
+- there is no guarantee that the method with the lowest training MSE will also have the lowest test MSE. For the methods with quite small training MSE can have much larger test MSE
+
+
+```{r, fig.width=8, fig.cap="Left: Data simulated from $f$, shown in black. Three estimates of $f$ are shown: the linear regression line (orange), and two smoothing spline fits (blue and red). Right: Traning MSE (red), test MSE (blue), and the irreducible error (orange line)."}
+
+library(tidyverse)
+library(modelr)
+library(broom)
+
+set.seed(10)
+
+train <- tibble(
+  x = sort(runif(100, -2,2)), 
+  y = 1-2*x^5-x^2+rnorm(100,sd=5)
+)
+
+
+test <- tibble(
+  x = sort(runif(100, -2, 2)),
+  y =  1-2*x^5-x^2+rnorm(100,sd=5)
+)
+
+
+bs_ <- function(x, i, ...){
+  if(i <= 2){
+    poly(x, i, ...)
+  }else{
+    bs(x, i, ...)
+  }
+}
+
+
+df <- tibble(
+  i = 1:30
+) %>% 
+  mutate(
+    model = i %>% map(~{lm(y~bs_(x, .), train)}),
+    test_mse = model %>% map_dbl(mse, test),
+    train_mse = model %>% map_dbl(mse, train)
+  )
+
+
+
+g1 <- ggplot(train, aes(x,y))+
+  geom_point()+
+  geom_smooth(method="lm", se=F, color="orange")+
+  geom_smooth(method="lm", se=F, color="blue", formula=y~bs(x,3))+
+  geom_smooth(method="lm", se=F, color="red", formula=y~bs(x,30), n=200)+
+  geom_line(data=tibble(x=runif(100, -2, 2), y=1-2*x^5-x^2), aes(x,y))
+
+
+g2 <- ggplot(df, aes(i))+
+  geom_smooth(aes(y = test_mse), method="loess", se=F, color="blue")+
+  geom_smooth(aes(y = train_mse), method="loess", se=F, color="red")+
+  geom_hline(yintercept=25, color="orange")+ylab("MSE")+xlab("degrees of freedom")
+
+grid.arrange(g1,g2,ncol=2)
+```
+
+
+## The Bias-Variance Trade-Off
+
+
+The expected test MSE, for a given value $x_0$, can be decomposed into
+$$
+E(y_0-\hat f(x_0))^2=Var(\hat f(x_0))+[Bias(\hat f(x_0))]^2+Var(\epsilon)
+$$
+
+- $E(y_0-\hat f(x_0))^2$ defines the *expected test MSE*, refers to the average test MSE that we would obtain if we repeatedly estimated $f$ using a large number of training sets, and tested each at $x_0$.
+- *Variance* 
+    - refers to the amount by which $\hat f$ would change if we estimated it using a different training data set.
+    - a method has high variance then small changes in the training data can result in large changes in $\hat f$.
+    - in general, more flexible statistical methods have higher variance.
+- *bias*
+    - refers to the error that is introduced by approximating a real-life problem, which may be extremely complicated, by a much simpler model.
+    - generally, more flexible methods result in less bias.
+- As a general rule, as we use more flexible methods, the variance will increase and the bias will decrease. The relative rate of change of these two quantities determines whether the test MSE increases or decreases.
+
+
+\begin{figure}
+\centerline{\includegraphics[width=0.8\textwidth]{ISLR/Chapter2/12.pdf}}
+\caption{Squared bias (blue curve), variance (orange curve), $Var(\epsilon)$
+(dashed line), and test MSE (red curve) for the three types of data sets. The vertical dotted line indicates the flexibility level corresponding to the smallest test MSE.}
+\end{figure}
+
+```{r, fig.cap="Bias Variance trade-off: variance (gray), bias2 (blue), test-mse (red)"}
+f <- function(x){
+  1-2*x^5-x^2
+}
+
+n = 100
+x_0 <- 1.5
+
+ 
+res <- cross_df(
+  list(t = 1:100,
+  df = 5:40)
+) %>% 
+  mutate(
+    train = t %>% map(
+      ~tibble(
+        x = runif(n, -2, 2),
+        y = f(x)+rnorm(n, sd=5)
+      )),
+    model = map2(df, train, function(i, data) lm(y~bs_(x, i), data)),
+    aug = model %>% map(augment, newdata = tibble(x = x_0))
+  ) %>% 
+  unnest(aug)
+
+
+res %>% 
+  group_by(df) %>% 
+  summarise(
+    var = var(.fitted),
+    bias2 = (f(x_0)-mean(.fitted))^2,
+    mse = mean((f(x_0) - .fitted)^2)
+  ) %>% 
+  ggplot(aes(x = df)) +
+  geom_line(aes(y = var),  color = "gray", size = 1.2) +
+  geom_line(aes(y = bias2), color = "blue", size = 1.2) +
+  geom_line(aes(y = mse), color = "red", size = 1.2)
+```
+
+
+## The Classification Setting
+
+The most common approach for quantifying the accuracy of our estimate $\hat f$ is the training *error rate*
+$$
+\frac{1}{n}\sum_{i=1}^n I(y_i\neq\hat y_i)
+$$
+

@@ -1,0 +1,910 @@
+---
+title: "Linear Regression"
+author: "Lu Haibo"
+date: "Mondy, Feb 25, 2019"
+header-includes:
+   - \usepackage{rotating}
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{array}
+   - \usepackage{multirow}
+   - \usepackage{wrapfig}
+   - \usepackage{float}
+   - \usepackage{colortbl}
+   - \usepackage{pdflscape}
+   - \usepackage{tabu}
+   - \usepackage{threeparttable}
+   - \usepackage{threeparttablex}
+   - \usepackage[normalem]{ulem}
+   - \usepackage{makecell}
+   - \usepackage{xcolor}
+   - \usepackage{subfig}
+output:
+  tufte::tufte_handout:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_html: default
+  tufte::tufte_book:
+    citation_package: natbib
+    latex_engine: xelatex
+link-citations: yes
+
+---
+
+```{r setup, include=FALSE}
+library(tufte)
+library(knitr)
+library(kableExtra)
+# invalidate cache when the tufte version changes
+knitr::opts_chunk$set(tidy = FALSE, echo=FALSE, message=FALSE, warning=FALSE, cache.extra = packageVersion('tufte'), fig.width=6, fig.height=4, fig.align='center')
+options(htmltools.dir.version = FALSE, xtable.comment = FALSE)
+
+kable <- function(data, ...) {
+  knitr::kable(data, booktabs = TRUE, digits = 2,  ...)
+}
+
+```
+
+
+# Linear Regression 
+
+- a very simple approach for supervised learning
+- mainly useful for predicting a quantitative response
+- though very simple, still a useful and widely used statistical learning method
+
+
+## Example
+
+Suppose that in our role as statistical consultants we are asked to suggest, on the basis of this data, a marketing plan for next year that will result in high product sales. What information would be useful in order to provide such a recommendation? Here are a few important questions that we might seek to address:
+
+
+```{r, results='asis'}
+library(tidyverse)
+library(broom)
+library(gridExtra)
+library(ISLR)
+library(stargazer)
+library(xtable)
+
+adv <- read_csv("data/Advertising.csv") %>% 
+    select(-X1)
+
+adv %>% 
+  head() %>% 
+  kable()
+```
+
+1. Is there a relationship between advertising budget and sales?
+2. How strong is the relationship between advertising budget and sales?
+3. Which media contribute to sales?
+4. How accurately can we estimate the effect of each medium on sales?
+5. How accurately can we predict future sales?
+6. Is the relationship linear?
+7. Is there synergy among the advertising media? (*synergy* effect, *interaction* effect)
+
+
+# Simple Linear Regression
+
+$$
+Y\approx\beta_0+\beta_1X
+$$
+
+- $\approx$ as *is approximately modeled as*
+- `sales` $\approx \beta_0+\beta_1\times$ `TV`
+- $\beta_0,\beta_1$: *coefficients* or *parameters*
+- $\beta_0$: *intercept*, $\beta_1$: *slope*
+  $$
+  \hat y = \hat\beta_0+\hat\beta_1 x
+  $$
+- $\hat\beta_0$, $\hat\beta_1$: *estimated value*  using our training data
+- $\hat y$: *predicted value* of the response
+
+## Estimating the Coefficients
+
+In practice, $\beta_0$ and $\beta_1$ are unknown. So before making predictions, we must use data $(x_1,y_1),(x_2,y_2),\ldots,(x_n,y_n)$ to estimate the coefficients.
+
+- measuring *closeness*
+- minimizing the *least squares*: $\sum_{i=1}^n(y_i-\hat y_i)^2$
+
+```{r, fig.cap="For the Advertising data, the least squares fit for the regression of sales onto TV is shown. The fit is found by minimizing the sum of squared errors. Each grey line segment represents an error, and the fit makes a compromise by averaging their squares. In this case a linear fit captures the essence of the relationship, although it is somewhat deficient in the left of the plot"}
+
+pred <- lm(Sales~TV, adv) %>%
+  augment()
+
+ggplot(adv, aes(TV, Sales)) + 
+  geom_point(color = "red") + 
+  geom_smooth(method = "lm", color = "darkblue", se = F) +
+  geom_segment(aes(x = TV, y = Sales, xend = TV, yend = pred$.fitted), color = "darkgray")
+
+```
+
+
+- *residual*: $e_i=y_i-\hat y_i$
+- *residual sum of squares* (RSS)
+    $$
+    RSS=e_1^2+e_2^2+\cdots+e_n^2
+    $$
+- *least squares coefficient estimates* for simple linear regression
+    $$
+    \begin{split}
+    \hat\beta_1=&\frac{\sum_{i=1}^n(x_i-\bar x)(y_i-\bar y)}{\sum_{i=1}^n(x_i-\bar x)^2},\\
+    \hat\beta_0=&\bar y-\hat\beta_1\bar x
+    \end{split}
+    $$
+    
+```{r, fig.cap="Contour plots of the RSS on the Advertising data, using sales as the response and TV as the predictor. The red dots correspond to the least squares estimates $\\beta_0$, $\\beta_1$."}
+
+rss <- function(beta0, beta1){
+  adv %>% 
+    mutate(
+      .fitted = beta0+beta1*TV
+    ) %>% 
+    summarise(
+      rss = sum((Sales - .fitted)^2)
+    ) %>% 
+    pull(rss)
+}
+
+cross_df(
+  list(
+    beta0 = seq(6,8,length = 50),
+    beta1 = seq(0.03, 0.06, length = 50)
+  )
+) %>% 
+  mutate(
+    rss = map2_dbl(beta0, beta1, rss)
+  ) %>% 
+  ggplot(aes(x = beta0, y = beta1, z = rss, color = stat(level)), size = 1.2) + geom_contour(bins = 50)
+  
+```
+
+## Assessing the Accuracy of the Coefficient Estimates
+
+- Assume the *true* relationship between $X$ and $Y$ takes the form 
+  $$
+  Y=f(X)+\epsilon
+  $$
+- If $f$ is to be *approximated* by a linear function, the *population regression line*
+  $$
+  Y=\beta_0+\beta_1X+\epsilon
+  $$
+- The error term $\epsilon$ catches all for what we miss with this simple model
+    - the true relationship is probably not linear
+    - there may be other variables that cause variation in $Y$
+    - there may be measurement error
+    
+- Typically assume that the error term is independent of $X$
+
+
+```{r, fig.width=8, fig.cap="A simulated data set. Left: The red line represents the true relationship, $f(X)=2+3X$, which is known as the population regression line. The blue line is the least squares line; it is the least squares estimate for f(X) based on the observed data, shown in black. Right: The population regression line is again shown in red, and the least squares line in dark blue. In light blue, ten least squares lines are shown, each computed on the basis of a separate random set of observations. Each least squares line is different, but on average, the least squares lines are quite close to the population regression line."}
+
+set.seed(1)
+
+f <- function(x, sd = 5){
+  2 + 3*x +rnorm(length(x), sd = sd)
+}
+
+
+df <- tibble(
+  x = runif(100, -2, 2),
+  y = f(x)
+)
+
+g1 <- df %>% ggplot(aes(x, y)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = T, color = "blue", size = 1.2) +
+  geom_line(aes(x, f(x, 0)), color = "red", size = 1.2)
+
+est <- tibble(
+  i = 1:200
+) %>% 
+  mutate(
+    data = i %>% map(~tibble(
+      x = runif(100, -2, 2),
+      y = f(x)
+    )),
+    model = data %>% map(~lm(y~x, .x)),
+    pred = model %>% map(~augment(., newdata = tibble(x = c(-2, 2))))
+  ) 
+
+g2 <- est %>% 
+  unnest(pred) %>% 
+  select(-.se.fit) %>% 
+  spread(x, .fitted) %>% 
+  ggplot() + geom_segment(aes(x = -2, y = `-2`, xend = 2, yend = `2`), color = "darkgray") +
+  geom_line(aes(x, y), tibble(x=seq(-2, 2, length.out = 100), y = f(x,0)), color = "red", size = 1.2) +
+  geom_smooth(aes(x, y), data = df, method = "lm", color = "blue", size = 1.2, se = F) +
+  xlab("X") + ylab("Y")
+
+grid.arrange(g1, g2, nrow = 1)
+
+```
+
+# Population regression line VS. Least squares line
+
+Using information from a sample to estimate characteristics of a large population
+
+## Confidence interval \& Hypothesis test
+
+Suppose that we are interested in how close $\hat\beta_0$ and $\hat\beta_1$ are to the true values $\beta_0$ and $\beta_1$. Unfortunately, $\beta_0,\beta_1$ is unknown, but in general the $\hat\beta_0,\hat\beta_1$ calculated from the sample will provide a good estimate of them. In fact, this estimate is *unbiased*:
+
+$$
+E(\hat\beta_i) = \beta_i,\quad i = 1,2.
+$$
+
+```{r, fig.width=8}
+est %>% 
+  mutate(
+    coef = model %>% map(tidy)
+  ) %>% 
+  unnest(coef) %>% 
+  ggplot(aes(x = estimate, fill = term)) + geom_density() + facet_wrap(~term)
+
+```
+
+- how accurate is $\hat\beta_1$ as an estimate of $\beta_1$?
+    - *standard error* of $\hat\beta_1$
+    $$
+    Var(\hat\beta_1)=SE(\hat\beta_1)^2=\frac{\sigma^2}{\sum_{i=1}^n(x_i-\bar x)^2},
+    $$
+          where $\sigma^2=Var(\epsilon)$
+    - *residual standard error* (RSE)
+        - estimate for $\sigma$
+        - $RSE=\sqrt{RSS/(n-2)}$
+    - A $95\%$ *confidence interval*
+        - a $95\%$ confidence interval for $\beta_1$ approximately takes the form
+          $$
+          \hat\beta_1\pm2\times SE(\hat\beta_1)
+          $$
+        - a range of values such that with $95\%$ probability, the range will contain the true unknown value of the parameter
+        
+```{r, fig.margin = TRUE, fig.height=6, fig.width=3, fig.cap="Confidence interval calculated from 100 different sample. The black vertical line denotes the true parameter $\\beta_1=3$. The blue line denotes the confidence interval that includes the true parameter. The red line denotes the confidence interval that does not include the true parameter."}
+
+est %>%
+  mutate(
+    coef = model %>% map(tidy)
+  ) %>%
+  unnest(coef) %>%
+  filter(term == "x") %>%
+  mutate(
+    l = estimate - 1.96*std.error,
+    r = estimate + 1.96*std.error
+  ) %>%
+  select(l, r) %>%
+  mutate(
+    y = seq(0, 10, length.out = 200),
+    is_contained = if_else(l <=3 & r >= 3, T, F)
+  ) %>%
+  ggplot() +
+    geom_segment(aes(x = l, y = y, xend = r, yend = y, color = is_contained), size= 1.1) +
+    geom_segment(aes(x = 3, y = -0.1, xend = 3, yend = 10.1), color = "black", size = 1.2) +
+    guides(color = F) + labs(y = "") + theme(axis.text.y = element_blank())
+```
+        
+```{r, results='asis'}
+df %>% 
+  lm(y~x, .) %>% 
+  stargazer(title = "Coefficients of the least squares model for the regression of $Y=2+3X+\\epsilon$", header = F)
+```
+
+
+
+- *hypothesis test* on the coefficients
+    - The most common hypothesis test involves testing the *null hypothesis* of
+    $$
+    H_0:There~is~no~relationship~ between~ X~ and~ Y
+    $$
+    versus the *alternative hypothesis*
+    $$
+    H_a:There~is~ some~ relationship~ between~ X~ and~ Y
+    $$
+    - Mathematically, this corresponds to testing
+    $$
+    H_0:\beta_1=0
+    $$
+    versus
+    $$
+    H_a:\beta_1\neq0
+    $$
+    - To test the null hypothesis, we need to determine whether $\hat\beta_1$, our estimate for $\beta_1$, is *sufficiently far from zero* that we can be confident that $\beta_1$ is non-zero
+    - *t-statistic*
+    $$
+    t=\frac{\hat\beta_1-0}{SE(\hat\beta_1)}
+    $$
+    - If there really is no relationship between $X$ and $Y$, then we expect that the t-statistic will have a *t-distribution* with $n-2$ *degrees of freedom*
+    
+```{r, fig.margin = TRUE, fig.cap="The red curve denotes the Normal distribution $N(0,1)$. The dashed curve denotes the t-distribution with different degrees of freedom. As df increases, the t-distribution approaches to $N(0,1)$."}
+x <- seq(-5,5,length=200)
+plot(x, dnorm(x), col="red", lwd=3, type="l", ylab="", main="t-distribution")
+for(i in c(1,3,5,10,20,30))
+{
+  lines(x, dt(x, df = i), col=i, lty=2)
+}
+```
+    - *p-value*
+        - the probability of observing any value equal to $|t|$ or larger, assuming $\beta_1=0$ 
+        - a small p-value indicates that it is unlikely to observe such a substantial association between the predictor and the response due to chance, in the absence of any real association between the predictor and the response
+    - *significant level*  $\alpha$
+        - the criterion used for rejecting the null hypothesis
+        - chosen before data collection and is usually set to $0.05$
+
+```{r, results='asis', fig.margin=TRUE, fig.cap="The red area shows the area for $Pr(>|t|)=0.05$"}
+adv %>% 
+  lm(Sales~TV, .) %>% 
+  tidy() %>% 
+  kable(caption = "Regression result for the Advertising data: Sales ~ TV")
+
+x <- seq(-5, 5, length=100)
+plot(x, dt(x, 198), type="l", lwd=2, col="blue", ylab="t(198)")
+abline(v=qt(0.025, 198), lwd=2)
+abline(v=qt(0.975, 198), lwd=2)
+x <- seq(-5, qt(0.025, 198), length=100)
+y <- dt(x, 198)
+polygon(c(x, rev(x)), c(y,rep(0,100)), col="red")
+
+x <- seq(qt(0.975, 198), 5, length=100)
+y <- dt(x, 198)
+polygon(c(x, rev(x)), c(y,rep(0,100)), col="red")
+```
+
+```{r, results='asis', fig.cap="$Y=2+s^3/10+\\epsilon$. The t-statistics shows that there is no enough evidence shows that there is a relationship between $X$ and $Y$."}
+
+x <- rnorm(100)
+s <- runif(100, -5, 5)
+y <- 2+s^3/10+rnorm(100, sd=2)
+
+lm.fit <- lm(y~x) %>% tidy()
+
+lm.fit %>% kable(caption = "Regression result for Fig. 7")
+
+par(mfrow=c(1,2))
+plot(x,y, pch=20)
+t <- seq(-5,5,length=100)
+plot(t, dt(t, 98), col="blue", lwd=2, type="l")
+
+abline(v=lm.fit$statistic[2], lwd=2)
+t <- seq(-5, lm.fit$statistic[2], length=50)
+polygon(c(t,rev(t)), c(dt(t, 98), rep(0,50)), col="red")
+abline(v=abs(lm.fit$statistic[2]), lwd=2)
+t <- seq(-lm.fit$statistic[2], 5, length=50)
+polygon(c(t,rev(t)), c(dt(t, 98), rep(0,50)), col="red")
+
+```
+
+- Types of error in Hypothesis test
+    - type I error (*false positive*)
+        - incorrect rejection of a true null hypothesis
+        - leads one to conclude that a supposed effect or relationship exists when in fact it doesn't
+        - measured by $\alpha$
+    - type II error (*false negative*)
+        - failure to reject a false null hypothesis
+        - fail to believe relationship exists
+        - measured by $\beta$, usually can not be calculated
+    - *power* of a test: $1-\beta$
+    
+\begin{table}[!hbp]
+\begin{tabular}{|c|c|c|c|}
+\hline
+\multicolumn{2}{|c|}{} & \multicolumn{2}{|c|}{\textbf{Null hypothesis ($H_0$) is}}\\
+\cline{3-4}
+\multicolumn{2}{|c|}{} & \textbf{Valid/True} & \textbf{Invalid/False}\\
+\hline
+\textbf{Judgement of} & \textbf{Reject} & Type I error ($\alpha$)/False Positive & Correct inference/True Positive\\
+\cline{2-4}
+\textbf{Null Hypothesis ($H_0$)} & \textbf{Fail to reject}  & Correct inference/True Negative & Type II error ($\beta$)/False Nagative\\
+\hline
+\end{tabular}
+\end{table}
+
+```{r, fig.cap = "The blue curve shows the distribution of $\\beta_1$ under $H_0$. The red curve shows the distribution of $\\beta_1$ under $H_a$. The dashed black line shows the quantile for $Pr(>|t|)=0.05$. The gray area shows the Type I error. The yellow area shows the Type II error."}
+par(mfrow=c(1,1))
+x <- seq(-5, 8, length=100)
+plot(x, dt(x, df = 30), type="l", lwd=2, ylab="", col="blue", ylim=c(0, 0.5))
+abline(v=qt(0.975, df=30), lty=2, lwd=2)
+abline(v=qt(0.025, df=30), lty=2, lwd=2)
+lines(x, dt(x-1.5, df=30), lwd=2, col="red")    
+t <- seq(qt(0.975, df=30), 8, length=100)
+polygon(c(t,rev(t)), c(dt(t, 30), rep(0, 100)), col="gray")
+t <- seq(-5, qt(0.975, df=30), length=100)
+polygon(c(t,rev(t)), c(dt(t-1.5, 30), rep(0, 100)), col="yellow")
+t <- seq(-5, qt(0.0255, df=30), length=100)
+polygon(c(t,rev(t)), c(dt(t, 30), rep(0, 100)), col="gray")
+text(0, 0.42, labels = expression(H[0]:beta[1]==0))
+text(1.8, 0.47, labels = expression(H[a]:beta[1]==1.5))
+text(3, 0.03, labels = "Type I error")
+text(1, 0.1, labels = "Type II error")
+```
+
+## Assessing the Accuracy of the Model
+
+Once we have rejected the null hypothesis in favor of the alternative hypothesis, it is natural to want to quantify *the extend to which the model fits the data*
+
+- *residual standard error* (RSE)
+    - Due to the presence of error term $\epsilon$, even if we knew the true regression line, we would not be able to perfectly predict $Y$ from $X$
+    - RSE is an estimate of $\sigma(\epsilon)$, a measure of the *lack of fit* of the model to the data
+- $R^2$ statistic
+    - measures the *proportion of variability in* $Y$ *that can be explained using* $X$
+    $$
+    R^2=\frac{TSS-RSS}{TSS}
+    $$
+     where $TSS=\sum(y_i-\bar y)^2$ is the *total sum of squares*, $ESS=TSS-RSS$ is the *explained sum of squares*
+    - An $R^2$ statistic that is close to $1$ indicates that a large proportion of the variability in the response has been explained by the regression
+    - A number near $0$ indicates that the regression did not explain much of the variability in the response, this might occur because
+        - the linear model is wrong
+        - the inherent error $\sigma^2$ is high
+        - in the simple linear regression setting, $R^2=r^2$, where $r=Cor(X,Y)$
+
+<!-- ```{r, echo=FALSE, fig.margin=TRUE} -->
+<!-- fit <- lm(Sales~TV, data=adv) -->
+<!-- with(adv, plot(TV, Sales)) -->
+<!-- abline(fit, lwd=2, col="gray") -->
+<!-- abline(h=mean(adv$Sales), lwd=2, col="orange") -->
+<!-- id <- 23 -->
+<!-- with(adv, points(TV[id],Sales[id], pch=19, lwd=4, col="red")) -->
+<!-- with(adv, Arrows(TV[id], Sales[id], TV[id], predict(fit, data.frame(TV=TV[id])), code = 3, col = "orange", lwd = 2, arr.length =0.2)) -->
+<!-- with(adv, Arrows(TV[id]+10, Sales[id], TV[id]+10, mean(Sales), code = 3, col="blue", lwd=2, arr.length =0.2)) -->
+<!-- with(adv, Arrows(TV[id]+10, mean(Sales), TV[id]+10, predict(fit, data.frame(TV=TV[id])), code = 3, col = "red", lwd = 2, arr.length =0.2)) -->
+<!-- with(adv, segments(TV[id]-20, predict(fit, data.frame(TV=TV[id])), TV[id]+20, predict(fit, data.frame(TV=TV[id])), col="gray", lwd=2, lty=2)) -->
+<!-- with(adv, segments(TV[id]-20, Sales[id], TV[id]+20, Sales[id], col="gray", lwd=2, lty=2)) -->
+<!-- with(adv, text(TV[id]-15, 17, labels = "RSS", col = "orange")) -->
+<!-- with(adv, text(TV[id]+25, 17, labels = "ESS", col = "red")) -->
+<!-- with(adv, text(TV[id]+25, 13, labels = "TSS", col = "blue")) -->
+<!-- ``` -->
+        
+```{r, results='asis'}
+adv %>% 
+  lm(Sales~TV, .) %>% 
+  stargazer(header = F)
+```
+
+## Predictions
+
+- The inaccuracy in the coefficient estimates is related to the *reducible error*
+- *confidence interval*: determine how close $\hat Y$ will be to $f(X)$, uncertainty surrounding the *average*
+- *prediction interval*: determine how close $\hat Y$ will be to $f(X)+\epsilon$, uncertainty surrounding for one particular input
+
+```{r, fig.cap="The red line shows the regression line between Sales and TV. The blue lines are the $95\\%$ confidence interval, and the pink lines are the $95\\%$ prediction interval."}
+fit <- lm(Sales~TV, data=adv)
+
+pred <- fit %>% augment()
+
+pred %>% 
+  head() %>% 
+  kable(caption = "Predicted values for the model: Sales ~ TV ")
+
+ggplot(pred) +
+  geom_point(aes(TV, Sales)) +
+  geom_line(aes(TV, .fitted), size = 1.2, color = "red") +
+  geom_line(aes(TV, .fitted + 2*.se.fit), size = 1.2, color = "blue") +
+  geom_line(aes(TV, .fitted - 2*.se.fit), size = 1.2, color = "blue") +
+  geom_line(aes(TV, .fitted + 2*.sigma), size = 1.2, color = "pink") +
+  geom_line(aes(TV, .fitted - 2*.sigma), size = 1.2, color = "pink")
+```
+
+
+## Exercise
+
+This question involves the use of simple linear regression on the `Auto`
+data set. (`library(ISLR)`)
+
+a. Use the `lm()` function to perform a simple linear regression with `mpg` as the response and `horsepower` as the predictor. Use the `stargazer()` function (`library(stargazer)`) to print the results. Comment on the output. For example:
+    1. Is there a relationship between the predictor and the response?
+    2. How strong is the relationship between the predictor and the response?
+    3. Is the relationship between the predictor and the response positive or negative?
+    4. What is the predicted `mpg` associated with a `horsepower` of 98? What are the associated $95\%$ cofidence and prediction intervals?
+
+b. Plot the response and the predictor. Use `ggplot` (`library(ggplot2)`) to display the least squares regression line.
+
+c. Use `ggplot` to produce diagnostic plots of the least squares regression fit. Comment on any problems you see with the fit.
+
+
+# Multiple Linear Regression
+
+$$
+Y=\beta_0+\beta_1X_1+\beta_2X_2+\cdots+\beta_pX_p+\epsilon
+$$
+
+- As was the case in simple linear regression setting, the regression coefficients $\beta_0,\beta_1,\ldots,\beta_p$ are unknown, but can be estimated using the same least squares approach. 
+- Given estimates $\hat\beta_0,\hat\beta_1,\ldots,\hat\beta_p$, we can make predictions using
+  $$
+  \hat y=\hat\beta_0+\hat\beta_1x_1+\hat\beta_2x_2+\cdots+\hat\beta_px_p
+  $$
+  
+```{r, results='asis'}
+adv %>% 
+  lm(Sales~., .) %>% 
+  tidy() %>% 
+  kable(caption = "For the Advertising data, least squares coefficients estimates of the multiple linear regress of number of units sold on radio, TV, and newspaper advertising budgets.")
+```
+
+- Does it make sense for the multiple regression to suggest no relationship           between `Sales` and `Newspaper` while the simple linear regression implies the     opposite? Notice that the correlation between `Radio` and `Newspaper` is `r cor(adv$Radio, adv$Newspaper)`.
+    
+```{r, results='asis'}
+adv %>% cor() %>% kable()
+```
+
+## Some Important Questions
+
+When we perform multiple linear regression, we usually are interested in answering a few important questions.
+
+1. Is at least one of the predictors $X_1, X_2, \ldots, X_p$ usful in predicting the response?
+2. Do all the predictors help to explain $Y$, or is only a subset of the predictors useful?
+3. How well does the model fit the data?
+4. Given a set of predictor values, what response value should we predict, and how accurate is our prediction?
+
+
+## One: Is There a Relationship Between the Response and Predictors?
+
+As in the simple linear regression setting, we use a hypothesis test to answer this question:
+$$
+H_0:\beta_1=\beta_2=\cdots=\beta_p=0
+$$
+versus the alternative
+$$
+H_a:at~least~one~\beta_j~is~non-zero
+$$
+This hypothesis test is performed by computing the *F-statistic*
+$$
+F=\frac{(TSS-RSS)/p}{RSS/(n-p-1)}
+$$
+- When there is no relationship between the response and predictors, one would expect the F-statistic to take on a value close to 1. On the other hand, if $H_a$ is true, we expect $F$ to be greater than 1.
+```{r, results='asis'}
+library(olsrr)
+
+fit <- tribble(
+  ~ model,
+  lm("Sales ~ TV", adv), 
+  lm("Sales ~ TV + Radio", adv),
+  lm("Sales ~ TV + Newspaper", adv), 
+  lm("Sales ~ . ", adv)
+) %>% 
+  mutate(
+    AIC = model %>% map_dbl(AIC) %>% map_dbl(round, 2),
+    BIC = model %>% map_dbl(BIC) %>% map_dbl(round, 2),
+    mallows_cp = model %>% map_dbl(ols_mallows_cp, model[[4]]) %>% map_dbl(round, 2)
+  )
+
+
+
+fit %>% 
+  pull(model) %>% 
+  stargazer(
+    header = F, float.env = "sidewaystable",
+    dep.var.labels = "Sales", 
+    add.lines = list(c("AIC", pull(fit, AIC)), c("BIC", pull(fit, BIC)), c("Mallows's Cp", pull(fit, mallows_cp)))
+  )
+```
+
+- Given the individual p-values for each variable, **why do we need to look at the overall F-statistic?** ^[Remember any hypothesis test can make mistakes. If $H_0$ is true, there is only a $5\%$ chance that the F-statistic will result in a p-value below $0.05$. While if we use t-statistic for every variable, the probability that we did wrong will be much larger than $5\%$ when $p$ is large.]
+
+## Two: Deciding on Important Variables
+
+The task of determining which predictors are associated with the response, in order to fit a single model involving only those predictors, is referred to as *variable selection*
+
+- Ideally, we would like to perform variable selection by trying out a lot different models, each containing a different subset of the predictors. We can then select the *best* model out of all of the models that we have considered.
+- How do we determine which model is best?
+    - *Mallows's* $C_p$
+    - *Akaike information criterion* (AIC)
+    - *Bayesian information criterion* (BIC)
+    - *adjusted* $R^2$
+    
+- Unfortunately, there are a total of $2^p$ models that contain subsets of $p$ variables. There are three classical approaches
+    - *Forward selection*: begin with the *null model*
+    - *Backward selection*: begin with all variables in the model
+    - *Mixed selection*
+
+
+## Three: Model Fit
+
+
+Two of the most common numerical measures of model fit
+
+- RSE
+- $R^2$ VS *adjusted* $R^2$
+
+```{r, fig.width=6, fig.height=4, fig.cap="$R^2$ will always increase when more variables are added to the model, even if those variables are not associated with the response."}
+
+
+r2 <- summary(lm(Sales~., data=adv))$r.squared
+adv_test=adv
+for (i in 1:10)
+  {
+    adv_test <- cbind(adv_test,  rnorm(200))
+    colnames(adv_test)[4+i] = paste("X",i, sep = "")
+    r2[i+1] <- summary(lm(Sales~., data=adv_test))$r.squared
+  }
+plot(0:10, r2, pch=20, xlab = "The number of unassociated variables (noise)", ylab = "R squared")
+```
+
+## Four: Predictions
+
+- confidence interval
+- prediction interval
+
+# Other Considerations in the Regression Model
+
+## Qualitative Predictors
+
+```{r, results='asis'}
+data(Wage)
+
+Wage <- Wage %>% remove_rownames() %>% select(-logwage, -region)
+
+Wage %>% 
+  summary() %>%
+  kable(caption = "Wage and other data for a group of 3000 male workers in the Mid-Atlantic region. (Wage{ISLR})") %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+
+$$
+jobclass2. Information=\left\{
+\begin{split}
+0, \quad & \mbox{if jobclass = 1.Industrial}\\
+1, \quad & \mbox{if jobclass = 2.Information}
+\end{split}
+\right.
+$$
+```{r, results='asis'}
+Wage %>% 
+  lm(wage~., .) %>% 
+  stargazer(header = F, font.size = "footnotesize")
+```
+
+\newpage
+
+## Extenion of Linear Model
+
+**1. *synergy effect* or *interaction effect* **
+
+$$
+Y=\beta_0+\beta_1 X_1+\beta_2 X_2+\beta_3 X_1 X_2+\epsilon
+$$
+
+It is sometimes the case that an interaction term has a very small p-value, but the associated main effects (in this case, TV and radio) do not. The *hierarchical principle* states that *if we include an interaction in a model, we should also include the main effects, even if the p-values associated with their coefficients are not significant*.
+
+```{r,results='asis'}
+
+fit <- tribble(
+  ~ model,
+  lm(Sales~TV+Radio, adv),
+  lm(Sales~TV*Radio, adv),
+  lm(Sales~., adv)
+) %>% 
+  mutate(
+    AIC = model %>% map_dbl(AIC) %>% map_dbl(round, 2),
+    BIC = model %>% map_dbl(BIC) %>% map_dbl(round, 2),
+    mallows_cp = model %>% map_dbl(ols_mallows_cp, lm(Sales~., adv)) %>% map_dbl(round, 2)
+  )
+
+
+fit %>% 
+  pull(model) %>% 
+  stargazer(
+    # title = "For the Advertising data, least squares coefficient estimates associated with the regression of sales onto TV and radio, with an interaction term.",
+    header = F, 
+    dep.var.labels = "Sales", 
+    add.lines = list(c("AIC", pull(fit, AIC)), c("BIC", pull(fit, BIC)), c("Mallows's Cp", pull(fit, mallows_cp)))
+  )
+
+```
+
+**2. Non-linear relationships**
+
+```{r, results='asis', fig.cap="The Auto data set. For a number of cars, mpg and horsepower are shown. The linear regression fit is shown in orange. The linear regression fit for a model that includes $horsepower^2$ is shown as a red curve. The linear regression fit for a model that includes all polynomials of horsepower up to fifth-degree is shown in blue."}
+
+Auto %>% 
+  ggplot(aes(x = horsepower, y = mpg)) + geom_point(color = "gray") +
+  geom_smooth(method = "lm", formula = "y~x", se = F, col = "orange") +
+  geom_smooth(method = "lm", formula = "y~poly(x, 2)", se = F, col = "red") +
+  geom_smooth(method = "lm", formula = "y~poly(x, 5)", se = F, col = "blue")
+
+
+fit <- tribble(
+  ~ model,
+  lm(mpg~horsepower, Auto),
+  lm(mpg~poly(horsepower,2), Auto),
+  lm(mpg~poly(horsepower,5), Auto)
+) %>% 
+  mutate(
+    AIC = model %>% map_dbl(AIC) %>% map_dbl(round, 2),
+    BIC = model %>% map_dbl(BIC) %>% map_dbl(round, 2),
+    mallows_cp = model %>% map_dbl(ols_mallows_cp, lm(mpg~., Auto)) %>% map_dbl(round, 2)
+  )
+
+
+fit %>% 
+  pull(model) %>% 
+  stargazer(
+    header = F, 
+    dep.var.labels = "mpg", 
+    add.lines = list(c("AIC", pull(fit, AIC)), c("BIC", pull(fit, BIC)), c("Mallows's Cp", pull(fit, mallows_cp)))
+  )
+
+```
+
+
+# Potential Problems
+
+When we fit a linear regression model to a particular data set, many problems may occur. Most common among these are the following:
+
+1. Non-linearity of the response-predictor relationships
+2. Correlation of error terms
+3. Non-constant variance of error terms
+4. Outliers
+5. High-leverage points
+6. Collinearity
+
+In practice, identifying and overcoming these problems is as much an art as a science.
+
+**1. Nonlinearity of the Data**
+
+The linear regression model assumes that there is a straight-line relationship between the predictors and the response. If the true relationship is far from linear, then virtually all of the conclusions that we draw from the fit are suspect.
+
+*Residual plots* are a useful graphical tool for identifying non-linearity.
+
+
+```{r, fig.cap="Plots of residuals versus predicted (or fitted) values for the Auto data set. In each plot, the red line is a smooth fit (use the `smooth()` function) to the residuals, intended to make it easier to identify a trend. Left: A linear regression of mpg on horsepower. A strong pattern in the residuals indicates non-linearity in the data. Right: A linear regression of mpg on horsepower and horsepower2. There is little pattern in the residuals."}
+fit0 <- lm(mpg~horsepower, data=Auto)
+fit1 <- lm(mpg~poly(horsepower,2), data=Auto)
+
+par(mfrow=c(1,2))
+plot(fit0$fitted.values, fit0$residuals, col="gray", xlab="Fitted values", ylab="Residuals")
+lines(lowess(fit0$fitted.values, fit0$residuals), col="red", lwd=2)
+
+plot(fit1$fitted.values, fit1$residuals, col="gray", xlab="Fitted values", ylab="Residuals")
+lines(lowess(fit1$fitted.values, fit1$residuals), col="red", lwd=2)
+```
+
+**2. Correlation of Error Terms**
+
+An Important assumption of the linear regression model is that the error terms, $\epsilon_1, \epsilon_2,\ldots, \epsilon_n$, are uncorrelated. This means that the fact $\epsilon_i$ is positive provides little or no information about the sign of $\epsilon_{i+1}$.
+
+If in fact there is correlation among the error terms, then **the estimated standard errors will tend to underestimate the true standard errors**. As a result, confidence and prediction intervals will be narrower than they should be.
+
+Such correlations frequently occur in the context of *time series* data, which consists of observations for which measurements are obtained at discrete points in time.
+
+```{r, echo=FALSE, fig.height=6, fig.width=8, fig.cap= "Plots of residuals from simulated time series data sets generated with differing levels of correlation $\\rho$ between error terms for adjacent time points"}
+
+par(mfrow=c(3,1))
+rho =0
+x <- rnorm(1)
+for(i in 2:100)
+  {
+    x[i] <- rho*x[i-1]+rnorm(1)
+  }
+plot(x, xlab="", ylab="Residual", main =expression(rho==0), ylim=c(-4,4))
+lines(x)
+
+rho =0.5
+x <- rnorm(1)
+for(i in 2:100)
+  {
+    x[i] <- rho*x[i-1]+rnorm(1)
+  }
+plot(x, xlab="", ylab="Residual", main = expression(rho==0.5), ylim=c(-4,4))
+lines(x)
+
+rho =0.9
+x <- rnorm(1)
+for(i in 2:100)
+  {
+    x[i] <- rho*x[i-1]+rnorm(1)
+  }
+plot(x, xlab="", ylab="Residual", main = expression(rho==0.9), ylim=c(-4,4))
+lines(x)
+```
+
+**3. Non-constant Variance of Error Terms** (*heteroscedasticity*)
+
+Another important assumption of the linear regression model is that the error terms have a constant variance, $Var(\epsilon_i)=\sigma^2$. The standard errors, confidence intervals, prediction intervals, and hypothesis tests associated with the linear model rely upon this assumptions. 
+```{r, echo=FALSE, fig.height=3, fig.width=4, fig.cap="The funnel shape indicates heteroscedasticity."}
+fit <- lm(Sales~TV, data=adv)
+plot(fit$fitted.values, fit$residuals, xlab="Fitted values", ylab="Residuals")
+abline(h=0, lty=2)
+```
+
+**4. Outliers**
+
+An *outlier* is a point for which $y_i$ is far from the value predicted by the model.
+
+
+```{r, echo=FALSE, fig.height=4, fig.width=8, fig.cap="Left: The least squares regression line is shown in red, and the regression line after removing the outlier is shown in blue. Center: The residual plot clearly identifies the outlier. Right: The outlier has a studentized residual above 4; typically we expect values between -3 and 3."}
+par(mfrow=c(1,3))
+x <- runif(50, -2, 3)
+y <- 1+x+rnorm(50)
+y[20] <- 7
+plot(x,y, xlab="X", ylab="Y")
+points(x[20], y[20], pch=20, col="red")
+text(x[20], y[20], "20", pos = 3)
+y.new <- y[-20]
+x.new <- x[-20]
+fit0 <- lm(y.new~x.new)
+abline(fit0, col="blue", lty=2, lwd=2)
+fit <- lm(y~x)
+abline(fit, col="red", lwd=2)
+pred0 <- predict(fit0, data.frame( x.new=seq(-2,3,length=20)), interval = "confidence")
+lines(seq(-2,3,length=20), pred0[,2], col="blue", lty=2)
+lines(seq(-2,3,length=20), pred0[,3], col="blue", lty=2)
+pred <- predict(fit, data.frame( x=seq(-2,3,length=20)), interval = "confidence")
+lines(seq(-2,3,length=20), pred[,2], col="red")
+lines(seq(-2,3,length=20), pred[,3], col="red")
+
+plot(fit$fitted.values, fit$residuals, xlab="Fitted Values", ylab="Residuals")
+points(fit$fitted.values[20], fit$residuals[20], pch=20, col="red")
+text(fit$fitted.values[20], fit$residuals[20], "20", pos = 3)
+abline(h=0, lty=2)
+
+plot(rstandard(fit))
+abline(h=0, lty=2)
+```
+Removing the outlier has little effect on the least squares line, however, the outlier can have a dramatic increase to the RSE, and cause the $R^2$ to decline.
+
+We can plot the *studentized residuals* using `rstandard()` function. Observations whose studentized residuals are greater than 3 in absolute value are possible outliers.
+```{r,eval=FALSE}
+plot(rstandard(lm.fit))
+```
+
+**5. High Leverage Points**
+
+The outliers are observations for which the response $y_i$ is unusual given the predictor $x_i$. In contrast, observations with *high leverage* have an unusual value for $x_i$. 
+
+```{r, echo=FALSE, fig.height=4, fig.width=5, fig.cap="Observation 51 is a high leverage point, while 20 is not. The red line is the fit to all the data, and the blue line is the fit with observation 51 removed."}
+par(mfrow=c(1,1))
+x <- runif(50, -2, 3)
+y <- 1+x+rnorm(50)
+y[20] <- 7
+x[51] <- 4
+y[51] <- 12
+plot(x,y, xlab="X", ylab="Y", ylim=c(-2,13))
+points(x[c(20,51)], y[c(20,51)], pch=20, col="red")
+text(x[c(20,51)], y[c(20,51)], c("20","51"), pos = 3)
+y.new <- y[-51]
+x.new <- x[-51]
+fit0 <- lm(y.new~x.new)
+abline(fit0, col="blue", lty=2, lwd=2)
+fit <- lm(y~x)
+abline(fit, col="red", lwd=2)
+```
+In fact, high leverage observations tend to have a sizable impact on the estimated regression line. It is cause for concern if the least squares line is heavily affected by just a couple of observations, because any problems with these points may invalidate the entire fit. For this reason, it is important to identify high leverage observations.
+
+Leverage statistics can be computed using the `hatvalues()` function.
+```{r,eval=FALSE}
+plot(hatvalues(lm.fit))
+```
+
+**6. Colinearity**
+
+*Collinearity* refers to the situation in which two or more predictor variables are closely related to one another. 
+
+```{r, results='asis', echo=FALSE, fig.height=5, fig.width=9, fig.cap="Scatterplots of the observations from the Credit data set. Left: A plot of age versus limit. These two variables are not collinear. Right: A plot of rating versus limit. There is high collinearity."}
+Credit <- read.csv("data/Credit.csv", header=T)
+Credit <- Credit[,-1]
+xtable(head(Credit))
+par(mfrow=c(1,2))
+with(Credit, plot(Limit, Age, col="red", pch=20))
+with(Credit, plot(Limit, Rating, col="red", pch=20))
+```
+
+```{r, results='asis'}
+fit1 <- lm(Balance~Age + Limit, data=Credit)
+fit2 <- lm(Balance~Age + Rating, data=Credit)
+fit3 <- lm(Balance~Age + Rating + Limit, data=Credit)
+
+stargazer(fit1, fit2, fit3, header = F, title = "The results for three multiple regression models involving the Credit data set are shown. The standard error of $\\hat\\beta_{limit}$ increases 12-fold in the second regression, due to collinearity.")
+```
+
+The presence of collinearity can pose problems in the regression context, since it can be difficult to separate out the individual effects of collinear variables on the response. In other words, since `Limit` and `Rating` tend to increase or decrease together, it can be difficult to determine how each one separately is associated with the response, `balance`.
+
+Since collinearity reduces the accuracy of the estimates of the regression coefficients, it causes the standard error for
+$\hat\beta_j$ to grow.
+
+## The Marketing Plan
+
+1. Is there a relationship between advertising budget and sales?
+2. How strong is the relationship between advertising budget and sales?
+3. Which media contribute to sales?
+4. How accurately can we estimate the effect of each medium on sales?
+5. How accurately can we predict future sales?
+6. Is the relationship linear?
+7. Is there synergy among the advertising media? (*synergy* effect, *interaction* effect)

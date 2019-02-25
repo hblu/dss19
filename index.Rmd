@@ -1,0 +1,29 @@
+---
+title: "Decision Support Systems and Bussiness Intelligence - 2019"
+author: "Lu Haibo"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Lecture Notes
+
+[Syllabus](lecture/0.syllabus.pdf)
+
+1. [Overview](lecture/1.Overview.pdf)
+2. [Linear Regression](lecture/2.LinearReg.pdf)
+
+## Text and Readings
+
+- [Business Intelligence and Analysis: Systems for Decision Support (10th)](book/Business_Intelligence_and_Analytics_Systems_for_Decision_10.pdf)
+- [Data Mining For Bussiness Intelligence](book/DATA MINING For Bussiness Intelligence.zip)
+- [R for Data Science](https://r4ds.had.co.nz/)
+- [An Introduction to Statistical Learning with applications in R](book/An introduction to statistical learning with applications in R.pdf)
+- [The Elements of Statistical Learning (Data Mining, Inference, and Prediction)](book/ESLII_print10.pdf)
+
+## Software
+
+- [R](https://www.r-project.org/)
+- [RStudio](https://www.rstudio.com/)
