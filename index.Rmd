@@ -12,8 +12,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 [Syllabus](lecture/0.syllabus.pdf)
 
-1. [Overview](lecture/1.Overview.pdf)
-2. [Linear Regression](lecture/2.LinearReg.pdf)
+1. [Overview](lecture/1.Overview.pdf), [Rmarkdown](lecture/1.Overview.Rmd)
+2. [Linear Regression](lecture/2.LinearReg.pdf), [Rmarkdown](lecture/2.LinearReg.Rmd)
+3. [Intro R](lecture/hadley_many_models.pdf), [Lecture Note](lecture/intro_r.html), [Rmarkdown](lecture/intro_r.Rmd)
+
+## Homework
+
+1. [Linear Regression](lecture/homework/homework1.pdf)
 
 ## Text and Readings
 

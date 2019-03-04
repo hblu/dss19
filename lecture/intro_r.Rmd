@@ -1,0 +1,157 @@
+---
+title: "Into R"
+date: "`r Sys.Date()`"
+output:
+  tufte::tufte_html: default
+  tufte::tufte_book:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_handout:
+    citation_package: natbib
+    latex_engine: xelatex
+ctex: yes
+link-citations: yes
+---
+
+```{r setup, include=FALSE}
+library(tufte)
+# tufte版本变化之后更新knitr缓存
+knitr::opts_chunk$set(tidy = FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+```
+
+```{r}
+# install.packages("tidyverse")
+
+library(tidyverse)
+library(gapminder)
+library(broom)
+library(stargazer)
+
+gapminder
+
+# View(gapminder)
+
+# dplyr包用来整理数据
+
+# filter 筛选行
+
+# <- : alt+-
+china <- filter(gapminder, country == "China")
+
+china
+
+# 使用 ggplot2 包进行作图
+
+ggplot(china) + 
+  geom_point(aes(x = year, y = lifeExp)) +
+  geom_line(aes(x = year, y = lifeExp))
+  
+ggplot(china, aes(x = year, y = lifeExp)) + 
+  geom_point() +
+  geom_line()
+
+
+#####
+
+ggplot(gapminder, aes(x = year, y = lifeExp, group = country, color = continent)) +
+  geom_line(size = 1.5, alpha = 0.5)
+
+######
+
+ggplot(gapminder) +
+  geom_boxplot(aes(y = lifeExp, fill = continent))
+
+# 使用 lm 进行线性回归
+
+# 加载 broom 包，用来整理回归分析结果: tidy, glance, augment
+
+model <- lm(lifeExp ~ year, gapminder)
+
+#tidy 给出的是回归分析的系数
+tidy(model)
+
+#glance 给出的是对模型的评价指标
+glance(model)
+
+#augment 给出的是模型的预测值
+augment(model)
+
+##########
+
+model_china <- lm(lifeExp ~ year, china)
+tidy(model_china)
+
+###############
+# y = f(x)
+# z = g(y)
+# h(z)
+
+china <- filter(gapminder, country == "China")
+model_china <- lm(lifeExp ~ year, china)
+tidy(model_china)
+
+#####################
+# h(g(f(x)))
+
+tidy(lm(lifeExp ~ year, filter(gapminder, country == "China")))
+
+##############
+# pipe %>% : ctrl+shift+M
+# x %>% f(y)  : f(x, y)
+# x %>% f(., y)
+# x %>% f(.x, y)
+# x %>% 
+#   f %>% 
+#   g %>% 
+#   h
+##############3
+
+gapminder %>% 
+  filter(country == "Taiwan") %>% 
+  lm(lifeExp ~ year, .) %>% 
+  tidy()
+
+##############
+# nest : 创建嵌套表
+
+# gapminder %>% 
+#   nest(year, lifeExp, pop, gdpPercap)
+# 
+# gapminder %>% 
+#   nest(year:gdpPercap)
+
+gapminder %>% 
+  nest(-country, -continent)
+
+###############
+a <- 1:10
+a^2
+sqrt(a)
+# 使用 map 进行循环
+
+a %>% map(sqrt)  # map(a, sqrt)
+a %>% map_dbl(sqrt)
+a %>% map_dbl(~sqrt(.))
+
+
+########
+# mutate 创建新变量
+
+
+gapminder %>% 
+  nest(-country) %>%
+  mutate(
+    model = data %>% map(~lm(lifeExp~year, .)),
+    tidy = model %>% map(tidy)
+  ) %>% 
+  unnest(tidy) %>% 
+  filter(term == "year", p.value < 0.05, estimate > 0) %>% 
+  arrange(-estimate)
+
+```
+
+```{r, results='asis'}
+
+model_china %>% stargazer(type = "html")
+```
