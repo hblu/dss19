@@ -1,0 +1,581 @@
+---
+title: "Classification"
+author: "Lu Haibo"
+date: "Mondy, Mar 11, 2019"
+header-includes:
+   - \usepackage{rotating}
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{array}
+   - \usepackage{multirow}
+   - \usepackage{wrapfig}
+   - \usepackage{float}
+   - \usepackage{colortbl}
+   - \usepackage{pdflscape}
+   - \usepackage{tabu}
+   - \usepackage{threeparttable}
+   - \usepackage{threeparttablex}
+   - \usepackage[normalem]{ulem}
+   - \usepackage{makecell}
+   - \usepackage{xcolor}
+   - \usepackage{subfig}
+output:
+  tufte::tufte_handout:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_html: default
+  tufte::tufte_book:
+    citation_package: natbib
+    latex_engine: xelatex
+link-citations: yes
+
+---
+
+```{r setup, include=FALSE}
+library(tufte)
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+library(broom)
+library(gridExtra)
+library(stargazer)
+
+# invalidate cache when the tufte version changes
+knitr::opts_chunk$set(tidy = FALSE, echo=FALSE, message=FALSE, warning=FALSE, cache.extra = packageVersion('tufte'), fig.width=9, fig.height=4, fig.align='center')
+options(htmltools.dir.version = FALSE, xtable.comment = FALSE)
+
+kable <- function(data, ...) {
+  knitr::kable(data, booktabs = TRUE, digits = 2,  ...)
+}
+
+```
+
+The linear regression model discussed in the last chapter assumes that the response variable $Y$ is quantitative. But in many situations, the response variable is instead *qualitative* (or *categorical*). 
+
+1. A person arrives at the emergency room with a set of symptoms that could possibly be attributed to one of three medical conditions. Which of the three conditions does the individual have?
+
+2. An online banking service must be able to determine whether or not a transaction being perfomed on the site is fraudulent, on the basis of the users's IP address, past transaction history, and so forth.
+
+3. On the basis of DNA sequence data for a number of patients with and without a given disease, a biologist would like to figure out which DNA mutations are delerious and which are not.
+
+
+Predicting a qualitative response for an observation can be referred to as *classifying* that observation, since it involves assinging the observation to a category, or class.
+
+
+- *logistic regression*
+- *Naive Bayesian classification*
+- *linear discriminant analysis*
+- *K-nearest neighbors*
+
+
+# Logistic Regression
+
+Consider the `Default` data set, where the response `default` falls into one of two categories, `Yes` or `No`. Rather than modeling this response $Y$ directly, logistic regression models the *probability* that $Y$ belongs to a particular category.
+
+
+```{r, results='asis'}
+library(ISLR)
+data(Default)
+
+Default %>% head() %>% kable()
+```
+
+```{r, fig.height=3, fig.cap= "The Default data set. Left: The annual incomes and monthly credit card balances of a number of individuals. The individuals who defaulted on their credit card payments are shown in orange, and those who did not are shown in blue. Center: Boxplots of balance as a function of default status. Right: Boxplots of income as a function of default status", fig.fullwidth = T}
+
+g1 <- ggplot(Default, aes(x = balance, y = income, color = default)) + geom_point()
+g2 <- ggplot(Default, aes(y = balance, fill = default)) + geom_boxplot()
+g3 <- ggplot(Default, aes(y = income, fill = default)) + geom_boxplot()
+
+grid.arrange(g1, g2, g3, ncol = 3)
+
+```
+
+
+```{r, fig.height=4, fig.cap="Classification using the Default data. Left: Estimated probability of default using linear regression. Some estimated probabilities are negative! The orange ticks indicate the 0/1 values coded for default(No or Yes). Right: Predicted probabilities of default using logistic regression. All probabilities lie between 0 and 1.", fig.fullwidth = T}
+
+g_top <- geom_rug(aes(x = balance), sides = "t", color = "red", data = Default %>% filter(default == "Yes"))
+g_bottom <- geom_rug(aes(x = balance), sides = "b", color = "orange", data = Default %>% filter(default == "No"))
+
+g1 <- Default %>% 
+  mutate(
+    default = if_else(default == "Yes", 1, 0)
+  ) %>% 
+  ggplot() + 
+  geom_smooth(aes(x = balance, y = default), method = "lm", se = F) +
+  g_top + g_bottom +
+  labs(x = "Balance", y = "Probability of Default") + ylim(0, 1)
+
+g2 <- Default %>% 
+  mutate(
+    default = if_else(default == "Yes", 1, 0)
+  ) %>% 
+  ggplot() + 
+  geom_smooth(aes(x = balance, y = default), method = "glm", se = F, method.args = list(family = "binomial")) +
+  g_top + g_bottom +
+  geom_hline(yintercept = 0.2, linetype = 2) +
+  labs(x = "Balance", y = "Probability of Default") + ylim(0, 1)
+
+grid.arrange(g1, g2, ncol = 2)
+
+```
+
+For the `Default` data, logistic regression models the probability of default. For example, the probability of default given `balance` can be written as
+$$
+Pr(default=Yes\mid balance)
+$$
+The value of $Pr(default=Yes\mid balance)$, which we abbreviate $p(balance)$, will range between $0$ and $1$. Then for any given value of `balance`, a prediction can be made for `default`. For example, one might predict
+$default = Yes$ for any individual for whom $p(balance)> 0.2$. Alternatively, if a company wishes to be conservative in predicting individuals who are at risk for default, then they may choose to use a lower *threshold*, such
+as $p(balance)>0.1$.
+
+## The Logistic Model
+
+$$
+\log\left(\frac{p(X)}{1-p(X)}\right)=\beta_0+\beta_1X+\epsilon
+$$
+
+```{marginfigure, echo = TRUE}
+**Generalized linear model** 
+$$
+E(Y\mid X)=\mu(x)=g^{-1}(X\beta)
+$$
+https://en.wikipedia.org/wiki/Generalized_linear_model
+```
+
+The left-hand side is called the *log-odds* or *logit*.
+
+## Estimating the Regression Coefficients
+
+In general, we use *maximum likelihood* to estimate the unknown linear regression coefficients.
+
+```{r,results='asis'}
+
+fit1 <- glm(default~balance, data=Default, family=binomial)
+fit2 <- glm(default~student, data=Default, family=binomial)
+fit3 <- glm(default~., data=Default, family=binomial)
+stargazer(fit1, fit2, fit3, title = "For the Default data, estimated coefficients of the logistic regression model that predicts the probability of default.", header = F, font.size = "footnotesize")
+
+```
+
+
+## Making Predictions
+
+Using the coefficient estimates given in Table 1, we predict that the defalut probability for an individual with a `balance` of \$1,000 is
+
+$$
+\hat p(X)=\frac{e^{\hat\beta_0+\hat\beta_1X}}{1+e^{\hat\beta_0+\hat\beta_1X}}
+$$
+
+
+## Multiple Logistic Regression
+
+$$
+\log\left(\frac{p(X)}{1-p(X)}\right)=\beta_0+\beta_1X+\cdots+\beta_pX_p+\epsilon
+$$
+
+Table 1, model (3) shows the coefficient estimates for a logistic regression model that uses `balance`, `income` (in thousands of dollars), and `student` status to predict probability of `default` . There is a surprising result here. The p-values associated with `balance` and the dummy variable for `student` status are very small, indicating that each of these variables is associated with the probability of `default`. However, the coefficient for the dummy variable is negative, indicating that students are less likely to default than nonstudents. In contrast, the coefficient for the dummy variable is positive in model (2). How is it possible for student status to be associated with an increase in probability of default in model (2) and a decrease in probability of default in model (3)? 
+
+```{r, fig.height=3, fig.cap="Confounding in the Default data.", fig.fullwidth = T}
+
+g3 <- Default %>% 
+  mutate(
+    default = if_else(default == "Yes", 1, 0)
+  ) %>% 
+  ggplot(aes(x = balance, y = default, color = student)) +
+  geom_smooth(method = "glm", se = F, method.args = list(family = "binomial")) +
+  labs(x = "Credit Card Balance", y = "Default Rate")
+
+g2 <- ggplot(Default, aes(y = balance, fill = student)) +
+  geom_boxplot() +
+  labs(x = "Student Status", y = "Credit Card Balance")
+
+g1 <- ggplot(Default) +
+  geom_bar(aes(x = student, y = stat(count), fill = default), position = position_fill()) +
+  labs(y = "", x = "Student Status")
+
+grid.arrange(g1, g2, g3, ncol = 3)
+
+```
+
+## Confusion Matrix 
+
+A **confusion matrix** is a table that is often used to describe the performance of a classification model (or "classifier") on a set of test data for which the true values are known. The confusion matrix itself is relatively simple to understand, but the related terminology can be confusing.
+
+```{r, echo=T}
+# For the Default data, the predicted probility of the logistic regression 
+# model using thresholds 0.05
+library(rsample)
+
+data <- initial_split(Default, prop = 0.7)
+train <- training(data)
+test <- testing(data)
+
+logist_fit <- glm(default ~., data = train, family="binomial")
+
+logist_fit %>% 
+  augment(newdata = test) %>%
+  mutate(
+    y_fitted = exp(.fitted)/(1+exp(.fitted)),
+    pred = if_else(y_fitted >= 0.05, "Yes", "No")
+  ) %>% 
+  select(default, pred) %>% 
+  table()
+```
+
+- **true positives** (TP): These are cases in which we predicted yes (they have the disease), and they do have the disease.
+- **true negatives** (TN): We predicted no, and they don't have the disease.
+- **false positives** (FP): We predicted yes, but they don't actually have the disease. (Also known as a "Type I error.")
+- **false negatives** (FN): We predicted no, but they actually do have the disease. (Also known as a "Type II error.")
+
+This is a list of rates that are often computed from a confusion matrix for a binary classifier:
+
+- **Accuracy**: Overall, how often is the classifier correct? $(TP+TN)/total$
+- **Misclassification Rate**: Overall, how often is it wrong? $(FP+FN)/total$ equivalent to 1 minus Accuracy, also known as "Error Rate".
+- **True Positive Rate**: When it's actually yes, how often does it predict yes? $TP/actual yes$ also known as "Sensitivity" or "Recall"
+- **False Positive Rate**: When it's actually no, how often does it predict yes? $FP/actual no$
+- **True Negative Rate**: When it's actually no, how often does it predict no? $TN/actual no$ equivalent to 1 minus False Positive Rate, also known as "Specificity".
+- **Precision**: When it predicts yes, how often is it correct? $TP/predicted yes$
+- **Prevalence**: How often does the yes condition actually occur in our sample? $actual yes/total$
+
+A couple other terms are also worth mentioning:
+
+- **Null Error Rate**: This is how often you would be wrong if you always predicted the majority class. (In our example, the null error rate would be $105/3000=0.035$ because if you always predicted "No", you would only be wrong for the 333 "Yes" cases.) This can be a useful baseline metric to compare your classifier against. However, the best classifier for a particular application will sometimes have a higher error rate than the null error rate, as demonstrated by the [*Accuracy Paradox*](http://en.wikipedia.org/wiki/Accuracy_paradox).
+- **Cohen's Kappa**: This is essentially a measure of how well the classifier performed as compared to how well it would have performed simply by chance. In other words, a model will have a high Kappa score if there is a big difference between the accuracy and the null error rate. ([*More details about Cohen's Kappa*](http://en.wikipedia.org/wiki/Cohen's_kappa))
+- **F Score**: This is a weighted average of the true positive rate (recall) and precision. ([*More details about the F Score*](http://en.wikipedia.org/wiki/F1_score))
+- **ROC Curve**: This is a commonly used graph that summarizes the performance of a classifier over all possible thresholds. It is generated by plotting the True Positive Rate (y-axis) against the False Positive Rate (x-axis) as you vary the threshold for assigning observations to a given class. ([*More details about ROC Curves*](http://www.dataschool.io/roc-curves-and-auc-explained/))
+
+##The ROC curve ^[https://www.dataschool.io/roc-curves-and-auc-explained/]
+
+An ROC curve is the most commonly used way to visualize the performance of a binary classifier, and AUC is (arguably) the best way to summarize its performance in a single number. ^[Understanding ROC curves, http://www.navan.name/roc/]
+
+- a popular graphic for simultaneously displaying the two types of errors for all possible threshold
+- The overall performance of a classifier, summarized over all possible thresholds, is given by the *area under the (ROC) curve* (AUC). An ideal ROC curve will hug the top left corner, so the larger area under the (ROC) curve the AUC the better the classifier
+- a classifier that performs no better than chance to have an AUC of $0.5$
+
+```{r, fig.height=4, fig.width=4, fig.cap="A ROC curve for the logistic regression classifier on the Default data. It traces out two types of error as we vary the threshold value for the posterior probability of default. The actual thresholds are not shown. The true positive rate is the sensitivity: the fraction of defaulters that are correctly identified, using a given threshold value. The false positive rate is 1-specificity: the fraction of non-defaulters that we classify incorrectly as defaulters, using that same threshold value. The ideal ROC curve hugs the top left corner, indicating a high true positive rate and a low false positive rate. The dotted line represents the “no information” (random guess) classifier; this is what we would expect if student status and credit card balance are not associated with probability of default."}
+
+library(ROCR)
+
+pred <- logist_fit %>% 
+  augment(newdata = test) %>%
+  mutate(
+    y_fitted = exp(.fitted)/(1+exp(.fitted)),
+    default = if_else(default == "Yes", 1, 0)
+  )
+  
+logist_roc <- prediction(pred$y_fitted, pred$default) %>% 
+  performance("tpr", "fpr") 
+logist_roc %>% plot()
+```
+
+
+# Naive Bayesian classification ^[[Naive Bayes Classifier: theory and R example](https://rpubs.com/riazakhan94/naive_bayes_classifier_e1071)]
+
+Logistic regression involves directly modeling $p(Y=k\mid X=x)$ using the logistic function for the case of two response classes. We now consider an alternative and less direct approach to estimating these probabilities using Bayes' theorem:
+$$
+p(Y=k\mid X=x)=\frac{p(Y=k)\times p(X=x\mid Y=k)}{p(X=x)},
+$$
+
+- $\pi_k:=p(Y=k)$ represent the overall or *prior* probability that a randomly chosen observation comes from the $k$th class
+- $f_k(x):=p(X=x\mid Y=k)$ denote the *density function* of $X$ for an observation that comes from the $k$ th class. 
+- $p_k(x):=p(Y=k\mid X=x)$ as the *posterior* probability that an observation $X=x$ belongs to the $k$th class. That is, it is the probability that the observation belongs to the $k$ th class, *given* the predictor value for that observation. 
+
+The above equation can be written as
+\begin{equation}\label{bayes}
+p_k(x) = \frac{\pi_k f_k(x)}{\sum_{l=1}^K\pi_l f_l(x)}
+\end{equation}
+
+## Example
+
+American Cancer Society estimates that about $1.7\%$ 0f women have breast cancer. 
+
+Susan G.Komen For the Cure Foundation states that mammography correctly identified about $78\%$ of women who truly have breast cancer.
+
+An article published in 2003 suggests that up tp $10\%$ of all mammograms are false positive.
+
+- Prior to any testing and any information exchange between the patient and the doctor, what probability should a doctor assign to a female patient having breast cancer?
+- When a patient goes through breast cancer screening there are two competing claims: patient has cancer and patient doesn't have cancer. If a mammogram yields a positive result,
+what is the probability that patient has cancer?
+- Since a positive mammogram doesn't necessarily mean that the patient actually has breast cancer, the doctor might decide to re-test the patient. What is the probability of having breast cancer if this second mammogram also yields a positive result?
+
+Now the ``naive'' conditional independence assumptions come into play: assume that each feature $X_i$ is *conditionally independent* of every other feature $X_j$ for $j\neq i$, given the category $k$. This means that
+$$
+p(x_1,x_2,\ldots,x_p\mid k)=p(x_1\mid k)\times p(x_2\mid k)\times\cdots\times p(x_p\mid k)
+$$
+
+
+```{r, fig.show="hold", fig.cap = "The Naive Bayes classifier for the Default data, normal distribution density for the continuous predictors."}
+library(naivebayes)
+naive_normal_fit <- naive_bayes(default ~ ., data = train)
+naive_kernel_fit <- naive_bayes(default ~ ., data = train, usekernel = T)
+plot(naive_normal_fit)
+```
+
+```{r, fig.show="hold", fig.cap = "The Naive Bayes classifier for the Default data, kernel based density for the continuous predictors."}
+naive_kernel_fit <- naive_bayes(default ~ ., data = train, usekernel = T)
+plot(naive_kernel_fit)
+```
+
+```{r, fig.width = 4, fig.height = 2.5, fig.cap="A ROC curve for the Logist classifier and Naive Bayes classifier on the Default data."}
+naive_roc <- predict(naive_kernel_fit, test, type = "prob") %>% 
+  as_tibble() %>% 
+  pull("Yes") %>% 
+  prediction(test$default) %>% 
+  performance("tpr", "fpr")
+  
+roc <- tibble(
+  model = "Naive Bayse",
+  x = naive_roc@x.values[[1]],
+  y = naive_roc@y.values[[1]]
+) %>% 
+  bind_rows(
+    tibble(
+      model = "Logist Regression",
+      x = logist_roc@x.values[[1]],
+      y = logist_roc@y.values[[1]]
+))
+
+ggplot(roc, aes(x= x, y= y, color = model)) + geom_line()
+
+```
+
+
+# Linear Discriminant Analysis (Numerical predictor)
+
+If $X$ is a numerical predictor, in general, estimating $f_k(x)$ tends to be more challenging, unless we assume some simple forms for these densities:
+
+Suppose we assume that $f_k(x)$ is *normal* or *Gaussian*, i.e.
+\begin{equation}\label{fk}
+f_k(x)=\frac1{(2\pi)^{p/2}|\Sigma_k|^{1/2}}exp\left(-\frac12(x-\mu_k)^T\Sigma_k^{-1}(x-\mu_k)\right),
+\end{equation}
+where $\mu_k$ and $\Sigma_k$ are the mean and covariance matrix for the $k$th class.
+
+
+- Linear discriminant analysis (LDA)
+
+    - Assumes that $\Sigma_1=\ldots=\Sigma_K$, i.e., there is a shared variance term across all $K$ classes.
+    - The LDA classifier assigns an observation $X=x$ to the class for which
+    $$
+    \delta_k(x)=x^T\Sigma^{-1}\mu_k-\frac12\mu_k^T\Sigma^{-1}\mu_k+\log\pi_k
+    $$
+    is largest.
+- Quadratic discriminant analysis (QDA)
+
+    - Unlike LDA, QDA assumes that each class has its own covariance matrix $\Sigma_k$.
+    - The QDA classifier assigns an observation $X=x$ to the class for which
+    $$
+    \delta_k(x)= -\frac12x^T\Sigma_k^{-1}x+x^T\Sigma_k^{-1}\mu_k-\frac12\mu_k^T\Sigma_k^{-1}\mu_k+\log\pi_k
+    $$
+    is largest.
+- The Bias-Variance trade-off
+    -  Roughly speaking, LDA tends to be a better bet than QDA if there are relatively few training observations and so reducing variance is crucial.
+    -  In contrast, QDA is recommended if the training set is
+very large, so that the variance of the classifier is not a major concern, or if the assumption of a common covariance matrix for the K classes is clearly untenable.
+
+```{r, echo=FALSE, fig.height=5, fig.width=9, fig.cap="The LDA and QDA decision boundary for a two-class problem with $\\Sigma_1=\\Sigma_2$ (Left), and $\\Sigma_1\\neq\\Sigma_2$ (Right)."}
+
+library(MASS)
+
+sigma <- matrix(c(1,1/2,3/2,2), nrow=2)
+
+x.train <- rbind(mvrnorm(50, mu = c(1,1), sigma), mvrnorm(50, mu = c(3,1), sigma))
+y.train <- c(rep(0,50), rep(1,50))
+train_lda <- data.frame(x1=x.train[,1], x2=x.train[,2], y=y.train)
+
+x1.span <- seq(-2,5,by=0.1)
+x2.span <- seq(-2,5,by=0.1)
+x.test <- expand.grid(x1.span, x2.span)
+test_lda <- data.frame(x1=x.test[,1], x2=x.test[,2])
+
+par(mfrow=c(1,2))
+
+lda.fit <- lda(y~., data=train_lda)
+prob <- predict(lda.fit, test_lda)
+y.test <- prob$class
+prob <- prob$posterior[,1]
+prob <- matrix(prob, length(x1.span), length(x2.span))
+contour(x1.span, x2.span, prob, level=0.5, axes = F, lwd=2)
+points(x.train, col=ifelse(y.train==1, "red", "blue"), cex=1.2)
+points(x.test, col=ifelse(y.test==1, "red", "blue"), pch=".", cex=1.2)
+box()
+
+qda.fit <- qda(y~., data=train_lda)
+prob <- predict(qda.fit, test_lda)
+y.test <- prob$class
+prob <- prob$posterior[,1]
+prob <- matrix(prob, length(x1.span), length(x2.span))
+contour(x1.span, x2.span, prob, level=0.5, add=T, lty=2, col="orange", lwd=2)
+
+##
+sigma1 <- matrix(c(1,1/2,3/2,2), nrow=2)
+sigma2 <- matrix(c(2,1/2,3/2,1), nrow=2)
+x.train <- rbind(mvrnorm(50, mu = c(1,1), sigma1), mvrnorm(50, mu = c(3,1), sigma2))
+y.train <- c(rep(0,50), rep(1,50))
+train_lda <- data.frame(x1=x.train[,1], x2=x.train[,2], y=y.train)
+
+x1.span <- seq(-2,5,by=0.1)
+x2.span <- seq(-2,5,by=0.1)
+x.test <- expand.grid(x1.span, x2.span)
+test_lda <- data.frame(x1=x.test[,1], x2=x.test[,2])
+
+
+
+lda.fit <- lda(y~., data=train_lda)
+prob <- predict(lda.fit, test_lda)
+y.test <- prob$class
+prob <- prob$posterior[,1]
+prob <- matrix(prob, length(x1.span), length(x2.span))
+contour(x1.span, x2.span, prob, level=0.5, axes = F, lwd=2)
+points(x.train, col=ifelse(y.train==1, "red", "blue"), cex=1.2)
+points(x.test, col=ifelse(y.test==1, "red", "blue"), pch=".", cex=1.2)
+box()
+
+qda.fit <- qda(y~., data=train_lda)
+prob <- predict(qda.fit, test_lda)
+y.test <- prob$class
+prob <- prob$posterior[,1]
+prob <- matrix(prob, length(x1.span), length(x2.span))
+contour(x1.span, x2.span, prob, level=0.5, add = T, lwd=2, col="orange", lty=2)
+
+```
+
+
+
+```{r, fig.cap="A ROC curve for the Logist, Naive Bayes, LDA and QDA classifier on the Default data."}
+library(MASS)
+lda.fit <- lda(default ~ ., data = train)
+qda.fit <- qda(default ~ ., data = train)
+
+lda.pred <- predict(lda.fit, test)
+qda.pred <- predict(qda.fit, test)
+
+lda_roc <- prediction(lda.pred$posterior[,2], test$default) %>% 
+  performance("tpr", "fpr")
+
+qda_roc <- prediction(qda.pred$posterior[,2], test$default) %>% 
+  performance("tpr", "fpr")
+
+
+tibble(
+  model = "LDA",
+  x = lda_roc@x.values[[1]],
+  y = lda_roc@y.values[[1]]
+) %>% 
+  bind_rows(
+    tibble(
+      model = "QDA",
+      x = qda_roc@x.values[[1]],
+      y = qda_roc@y.values[[1]]
+      ) 
+) %>% 
+  bind_rows(roc) %>% 
+  ggplot(aes(x, y, color = model)) + geom_line(size = 1.2)
+```
+
+<!-- ## Trade-off that results from modifying the threshold value for the posterior probability -->
+
+<!-- ```{r,echo=FALSE, fig.height=4, fig.width=8, fig.cap=" For the Default data set, error rates are shown as a function of the threshold value for the posterior probability that is used to perform the assignment. The black solid line displays the overall error rate. The blue dashed line represents the fraction of defaulting customers that are incorrectly classified, and the orange dotted line indicates the fraction of errors among the non-defaulting customers."} -->
+<!-- threshold <- seq(0, 1, by=0.001) -->
+
+<!-- sens <- NULL -->
+<!-- spec <- NULL -->
+<!-- total.err <- NULL -->
+
+<!-- for(i in 1:length(threshold)) -->
+<!--   { -->
+<!--     qda.pred2 <- factor(rep("No", length(qda.pred$class)), levels=c("No", "Yes")) -->
+<!--     qda.pred2[qda.pred$posterior[,2]>=threshold[i]] <- "Yes" -->
+<!--     t <- table(qda.pred2, Default$default) -->
+<!--     sens[i] <- t[2,2]/(sum(t[,2])) -->
+<!--     spec[i] <- t[1,1]/sum(t[,1]) -->
+<!--     total.err[i] <- (t[1,2]+t[2,1])/sum(t) -->
+<!--   } -->
+
+<!-- plot(threshold, 1-sens, type="l", lty=2, lwd=2, col="blue", xlab="Threshold", ylab="Error Rate") -->
+<!-- lines(threshold, total.err, lwd=2) -->
+<!-- lines(threshold, 1-spec, lwd=2, col="orange") -->
+<!-- ``` -->
+
+
+
+# K-nearst neighbors (KNN)
+
+- non-parametric method
+- given a positive integer $K$ and a test observation $x_0$
+- identifies the $K$ points in the training data that are closest to $x_0$. respresented by $N_0$
+- estimates the conditional probability for class $j$ as the fraction of points in $N_0$ whose response values equal $j$:
+$$
+Pr(Y=J\mid X=x_0)=\frac1K\sum_{i\in N_0}I(y_i=j)
+$$
+
+
+```{r, echo=FALSE, fig.cap="The knn decision boundary for a two-class problem with $\\Sigma_1=\\Sigma_2$", fig.height=6, fig.width=12}
+library(class)
+
+sigma <- matrix(c(1,1/2,3/2,2), nrow=2)
+x.train <- rbind(mvrnorm(50, mu = c(1,1), sigma), mvrnorm(50, mu = c(3,1), sigma))
+y.train <- c(rep(0,50), rep(1,50))
+
+x1.span <- seq(-2,5,by=0.1)
+x2.span <- seq(-2,5,by=0.1)
+x.test <- expand.grid(x1.span, x2.span)
+
+
+par(mfrow=c(1,3))
+
+knn.fit <- knn(x.train, x.test, y.train, k = 1, prob = T)
+prob <- attr(knn.fit, "prob")
+prob <- ifelse(knn.fit=="1", prob, 1-prob)
+prob <- matrix(prob, length(x1.span), length(x2.span))
+contour(x1.span, x2.span, prob, level=0.5, main="1-nearest neighbour", axes = F)
+points(x.train, col=ifelse(y.train==1, "red", "blue"), cex=1.2)
+points(x.test, col=ifelse(knn.fit==1, "red", "blue"), pch=".", cex=1.2)
+box()
+
+knn.fit <- knn(x.train, x.test, y.train, k = 5, prob = T)
+prob <- attr(knn.fit, "prob")
+prob <- ifelse(knn.fit=="1", prob, 1-prob)
+prob <- matrix(prob, length(x1.span), length(x2.span))
+contour(x1.span, x2.span, prob, level=0.5, main="5-nearest neighbour", axes = F)
+points(x.train, col=ifelse(y.train==1, "red", "blue"), cex=1.2)
+points(x.test, col=ifelse(knn.fit==1, "red", "blue"), pch=".", cex=1.2)
+box()
+
+knn.fit <- knn(x.train, x.test, y.train, k = 25, prob = T)
+prob <- attr(knn.fit, "prob")
+prob <- ifelse(knn.fit=="1", prob, 1-prob)
+prob <- matrix(prob, length(x1.span), length(x2.span))
+contour(x1.span, x2.span, prob, level=0.5, main="25-nearest neighbour", axes = F)
+points(x.train, col=ifelse(y.train==1, "red", "blue"), cex=1.2)
+points(x.test, col=ifelse(knn.fit==1, "red", "blue"), pch=".", cex=1.2)
+box()
+```
+
+
+<!-- ```{r,echo=FALSE, fig.height=4, fig.width=8, fig.cap=" For the Default data set, error rates are shown as a function of k that is used to perform the knn. The black solid line displays the overall error rate. The blue dashed line represents the fraction of defaulting customers that are incorrectly classified, and the orange dotted line indicates the fraction of errors among the non-defaulting customers."} -->
+<!-- sens <- NULL -->
+<!-- spec <- NULL -->
+<!-- total.err <- NULL -->
+<!-- for (i in 1:20) -->
+<!--   { -->
+<!--     knn.pred <- knn(Default[train, 3:4], Default[-train, 3:4], Default[train, 1], k = i) -->
+<!--     t <- table(knn.pred, Default[-train, 1]) -->
+<!--     sens[i] <- t[2,2]/sum(t[,2]) -->
+<!--     spec[i] <- t[1,1]/sum(t[,1]) -->
+<!--     total.err[i] <- (t[1,2]+t[2,1])/sum(t) -->
+<!--   } -->
+<!-- plot(1:20, 1-sens, type="l", lty=2, lwd=2, col="blue", xlab="k", ylab="Error Rate", ylim=c(0,1)) -->
+<!-- lines(1:20, total.err, lwd=2) -->
+<!-- lines(1:20, 1-spec, lwd=2, col="orange") -->
+<!-- ``` -->
+
+
+# A Comparison of Classification Methods
+
+- Both Logistic regression and LDA produce linear decision boundaries, the only difference is:
+    - Logistic regression using maximum likelihood;
+    - LDA using the estimated mean and variance from a normal distribution;
+    - When the Gaussian assumptions are correct, LDA can outperform Logistic regression; Conversely, Logistic regression can outperform LDA if these Gaussian assumptions are not met.
+- KNN is a completely non-parametric approach, no assumptions are made about the shape of the decision boundary
+    - when the decision boundary is highly non-linear, this approach to dominate LDA and logistic regression
+    - But KNN does not tell us which predictors are important
+- QDA serves as a compromise between the non-parametric KNN method and the linear LDA and logistic regression. 

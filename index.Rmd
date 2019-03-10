@@ -1,11 +1,24 @@
 ---
 title: "Decision Support Systems and Bussiness Intelligence - 2019"
 author: "Lu Haibo"
-output: html_document
+output:
+  html_document:
+    df_print: paged
+  tufte::tufte_book:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_handout:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_html: default
+link-citations: yes
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+library(tufte)
+# invalidate cache when the tufte version changes
+knitr::opts_chunk$set(tidy = FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
 ```
 
 ## Lecture Notes
@@ -15,10 +28,13 @@ knitr::opts_chunk$set(echo = TRUE)
 1. [Overview](lecture/1.Overview.pdf), [Rmarkdown](lecture/1.Overview.Rmd)
 2. [Linear Regression](lecture/2.LinearReg.pdf), [Rmarkdown](lecture/2.LinearReg.Rmd)
 3. [Intro R](lecture/hadley_many_models.pdf), [Lecture Note](lecture/intro_r.html), [Rmarkdown](lecture/intro_r.Rmd)
+4. [Classification](lecture/3.Classification.pdf), [Rmarkdown](lecture/3.Classification.Rmd)
 
 ## Homework
 
 1. [Linear Regression](lecture/homework/homework1.pdf)
+2. [Classification](lecture/homework/homework2.pdf)
+
 
 ## Text and Readings
 
