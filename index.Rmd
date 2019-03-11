@@ -48,3 +48,7 @@ options(htmltools.dir.version = FALSE)
 
 - [R](https://www.r-project.org/)
 - [RStudio](https://www.rstudio.com/)
+
+##
+
+- Email: sit_stat@163.com
