@@ -1,0 +1,237 @@
+---
+title: "Resampling Methods"
+author: "Lu Haibo"
+date: "Mondy, Mar 18, 2019"
+header-includes:
+   - \usepackage{rotating}
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{array}
+   - \usepackage{multirow}
+   - \usepackage{wrapfig}
+   - \usepackage{float}
+   - \usepackage{colortbl}
+   - \usepackage{pdflscape}
+   - \usepackage{tabu}
+   - \usepackage{threeparttable}
+   - \usepackage{threeparttablex}
+   - \usepackage[normalem]{ulem}
+   - \usepackage{makecell}
+   - \usepackage{xcolor}
+   - \usepackage{subfig}
+output:
+  tufte::tufte_handout:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_html: default
+  tufte::tufte_book:
+    citation_package: natbib
+    latex_engine: xelatex
+link-citations: yes
+
+---
+
+```{r setup, include=FALSE}
+library(tufte)
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+library(broom)
+library(gridExtra)
+library(stargazer)
+
+# invalidate cache when the tufte version changes
+knitr::opts_chunk$set(tidy = FALSE, echo=FALSE, message=FALSE, warning=FALSE, cache.extra = packageVersion('tufte'), fig.width=9, fig.height=4, fig.align='center')
+options(htmltools.dir.version = FALSE, xtable.comment = FALSE)
+
+kable <- function(data, ...) {
+  knitr::kable(data, booktabs = TRUE, digits = 2,  ...)
+}
+
+```
+
+
+# Introduction
+
+*Resampling methods* are an indispensable tool in modern statistics
+
+- repeatedly drawing samples from a training set
+- refitting a model of interest on each sample in order to obtain additional information about the fitted model
+
+Two most commonly used resampling methods:
+
+- *cross-validation*
+    - estimate the test error
+- *bootstrap*
+    - measure of accuracy of a parameter estimated
+    
+# Cross-Validation
+
+
+## The Validation Set Approach
+
+randomly dividing the available set of observations into two parts
+
+- *training set*
+- *validation set* or *hold-out set*
+
+```{r, echo=FALSE, fig.height=4, fig.width=9, warning=FALSE, fig.cap=" The validation set approach was used on the Auto data set in order to estimate the test error that results from predicting mpg using polynomial functions of horsepower. Left: Validation error estimates for a single split into training and validation data sets. Right: The validation method was repeated ten times, each time using a different random split of the observations into a training set and a validation set. This illustrates the variability in the estimated test MSE that results from this approach."}
+set.seed(1)
+library(ISLR)
+data(Auto)
+test.mse <- matrix(NA, nrow=10, ncol=10)
+
+for(i in 1:10)
+{
+  train <- sample(1:nrow(Auto), nrow(Auto)/2)
+  for (j in 1:10)
+  {
+    fit <- lm(mpg~poly(horsepower, j), data=Auto[train,])  
+    pred <- predict(fit, Auto[-train,])
+    test.mse[i,j] <-mean((pred-Auto[-train,"mpg"])^2)
+  }
+}
+
+par(mfrow=c(1,2))
+
+plot(1:10, test.mse[1,], xlab="Degree of Polynomial", ylab="test MSE", type="b", col="red", pch=20, lwd=2, ylim=c(15,27))
+
+plot(1:10, test.mse[1,], xlab="Degree of Polynomial", ylab="test MSE", type="l", col=1, ylim=c(15,27), lwd=2)
+
+for(i in 2:10)
+{
+  lines(1:10, test.mse[i,], col=i, lwd=2)
+}
+```
+
+The validation set approach is conceptually simple and is easy to implement. But it has two potential drawbacks:
+
+1. the validation estimate of *the test error rate can be highly variable*, depending on precisely which observations are included in the training set and which observations are included in the validation set.
+2.  In the validation approach, only a subset of the observationsare used to fit the model. Since statistical methods tend to perform worse when trained on fewer observations, this suggests that the validation set error rate may tend to *overestimate the test error* rate for the model fit on the entire data set.
+
+
+## Leave-One-Out Cross-Validation
+
+
+- A single observation $(x_1,y_1)$ is used for the validation set, and the remaining observations $\{(x_2,y_2), \ldots, (x_n,y_n)\}$ make up the training set. $MSE_1=(y_1-\hat y_1)^2$
+- Repeat the procedure $n$ times. The LOOCV estimate for the test MSE:
+$$
+CV_{(n)}=\frac1n\sum_{i=1}^n MSE_i.
+$$
+
+
+Major (dis)advantages
+
+1. Far less bias
+2. Always yield the same results
+3. Could be time costly
+
+```{r, echo=FALSE, fig.height=4, fig.width=9, fig.cap="Cross-validation was used on the Auto data set in order to estimate the test error that results from predicting mpg using polynomial functions of horsepower. Left: The LOOCV error curve. Right: 10-fold CV was run 10 separate times, each with a different random split of the data into ten parts. The figure shows the 10 slightly different CV error curves.", warning=FALSE}
+par(mfrow=c(1,2))
+#LOOCV
+mse.cv <- NULL
+for (j in 1:10)
+{
+  mse <- NULL
+  for (i in 1:nrow(Auto))
+  {
+        fit <- lm(mpg~poly(horsepower, j), data=Auto[-i,])
+        pred <- predict(fit, Auto[i,])
+        mse[i] <- (pred-Auto[i,"mpg"])^2
+  }
+  mse.cv[j] <- mean(mse)
+}
+plot(1:10, mse.cv, xlab="Degree of Polynomial", ylab="test MSE", main="LOOCV", type="b", col="purple", lwd=2, pch=20)
+
+#k-fold
+
+k=10
+mse.cv <- matrix(NA, nrow=10, ncol=10)
+for (ii in 1:10)
+{
+  fold <- matrix(sample(1:nrow(Auto), nrow(Auto)), ncol=k)
+
+  for (j in 1:10)
+  {
+    mse <- NULL
+    for (i in 1:k)
+    {
+      fit <- lm(mpg~poly(horsepower, j), data=Auto[fold[,-i],])
+      pred <- predict(fit, Auto[fold[,i],])
+      mse[i] <- mean((pred-Auto[fold[,i],"mpg"])^2)
+    }
+    mse.cv[ii, j] <- mean(mse)
+  }
+}
+plot(1:10, mse.cv[1,], type="l", lwd=2, col=1, xlab="Degree of Polynomial", ylab="test MSE", main="10-fold CV", ylim=c(18,25))
+for (ii in 2:10)
+{
+  lines(1:10, mse.cv[ii,], lwd=2, col=ii)
+}
+
+```
+
+
+## k-fold Cross-Validation
+
+- randomly dividing the set of observations into $k$ *folds*, of approximately equal size
+- pick one fold as a validation set, and fit on the remaining $k-1$ folds
+$$
+CV_{(k)}=\frac1k\sum_{i=1}^k MSE_i.
+$$
+
+- LOOCV is a special case of *k-fold* CV
+- k-fold cv can be much more fast than LOOCV, and the variability is much lower than the validation set approach
+
+
+## Cross-Validation on Classification Problems
+
+Rather than using MSE to quantify test error, we instead use the number of misclassified observations,
+$$
+CV_{(n)}=\frac1n\sum_{i=1}^n I(y_i\neq \hat y_i).
+$$
+
+# The Bootstrap
+
+The *bootstrap* is a widely applicable and extremely powerful statistical tool that can be used to quantify the uncertainty associated with a given estimator or statistical learning method.
+
+Rather than repeatedly obtaining independent data sets from the
+population, we instead obtain distinct data sets by repeatedly sampling observations from the original data set. (*sampling from the sample*)
+
+<!-- ```{r, warning=FALSE} -->
+<!-- # Estimate the variability of the coefficient -->
+
+<!-- # bootstrap -->
+<!-- n=1000 -->
+<!-- len <- nrow(Auto) -->
+<!-- coef <- matrix(NA, ncol=2, nrow=n) -->
+<!-- for (i in 1:n) -->
+<!-- { -->
+<!--   ind <- sample(1:len, len, replace = T ) #sampling from sample -->
+<!--   coef[i,] <- coef(lm(mpg~horsepower, data=Auto, subset = ind)) -->
+<!-- } -->
+<!-- apply(coef,2,sd) -->
+
+
+<!-- # bootstrap, using the function boot() -->
+<!-- boot.fn <- function(data, index) -->
+<!--   { -->
+<!--     return(coef(lm(mpg~horsepower, data=data, subset=index))) -->
+<!--   } -->
+
+<!-- library(boot) -->
+<!-- boot(Auto, boot.fn, 1000) -->
+
+<!-- # using the standard formula -->
+<!-- summary(lm(mpg~horsepower, data=Auto))$coef -->
+
+
+<!-- # estimate the standard error of median -->
+<!-- median.fn <- function(data, index) -->
+<!--   { -->
+<!--     return(median(data[index])) -->
+<!--   } -->
+<!-- boot(Auto$mpg, median.fn, 1000) -->
+
+<!-- ``` -->
+

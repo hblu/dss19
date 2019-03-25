@@ -29,12 +29,13 @@ options(htmltools.dir.version = FALSE)
 2. [Linear Regression](lecture/2.LinearReg.pdf), [Rmarkdown](lecture/2.LinearReg.Rmd)
 3. [Intro R](lecture/hadley_many_models.pdf), [Lecture Note](lecture/intro_r.html), [Rmarkdown](lecture/intro_r.Rmd)
 4. [Classification](lecture/3.Classification.pdf), [Rmarkdown](lecture/3.Classification.Rmd)
+5. [Linear_Model_Selection](lecture/5.Linear_Model_Selection.pdf), [Rmarkdown](lecture/5.Linear_Model_Selection.Rmd), [Resampling](lecture/4.Resampling.pdf)
 
 ## Homework
 
-1. [Linear Regression](lecture/homework/homework1.pdf)
-2. [Classification](lecture/homework/homework2.pdf)
-
+1. [03-04: Linear Regression](lecture/homework/homework1.pdf)
+2. [03-11: Classification](lecture/homework/homework2.pdf)
+3. [03-25: Linear Model Selection](lecture/mnist.R), [Data: Mnist](lecture/mnist.zip)
 
 ## Text and Readings
 

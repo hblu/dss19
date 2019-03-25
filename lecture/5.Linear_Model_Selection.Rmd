@@ -1,0 +1,509 @@
+---
+title: "Linear Model Selection and Regularization"
+author: "Lu Haibo"
+date: "Mondy, Mar 25, 2019"
+header-includes:
+   - \usepackage{rotating}
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{array}
+   - \usepackage{multirow}
+   - \usepackage{wrapfig}
+   - \usepackage{float}
+   - \usepackage{colortbl}
+   - \usepackage{pdflscape}
+   - \usepackage{tabu}
+   - \usepackage{threeparttable}
+   - \usepackage{threeparttablex}
+   - \usepackage[normalem]{ulem}
+   - \usepackage{makecell}
+   - \usepackage{xcolor}
+   - \usepackage{subfig}
+output:
+  tufte::tufte_handout:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_html: default
+  tufte::tufte_book:
+    citation_package: natbib
+    latex_engine: xelatex
+link-citations: yes
+
+---
+
+```{r setup, include=FALSE}
+library(tufte)
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+library(broom)
+library(gridExtra)
+library(stargazer)
+
+# invalidate cache when the tufte version changes
+knitr::opts_chunk$set(tidy = FALSE, echo=T, message=FALSE, warning=FALSE, cache.extra = packageVersion('tufte'), fig.width=9, fig.height=4, fig.align='center')
+options(htmltools.dir.version = FALSE, xtable.comment = FALSE)
+
+kable <- function(data, ...) {
+  knitr::kable(data, booktabs = TRUE, digits = 2,  ...)
+}
+
+
+mse <- function(y, pred){
+  mean((y-pred)^2)
+}
+
+```
+
+
+# Introduction
+
+There are two reasons why we are often not satisfied with the least squares estimate:
+
+- *prediction accuracy*: the least squares estimates often have **low bias but large variance**.
+- *interpretation*: with a large number of predictors, we often would like to determine a smaller subset that exhibit the strongest effects. **In order to get the ``big picture'', we are willing to sacrifice some of the small details**.
+
+Some ways in which the simple linear model can be improved:
+
+- *Subset Selection*
+- *Shrinkage*
+- *Dimension Reduction*
+
+# Subset Selection
+
+With subset selection we retain only a subset of the variables, and eliminate the rest from the model.
+
+## Best Subset Selection
+
+Best subset regression finds for each $k\in\{0,1,2,\ldots,p\}$ the subset of size $k$ that gives smallest residual sum of squares (RSS).
+
+---------------------------------------------------------------
+**Algorithm**  *Best subset selection*
+---------------------------------------------------------------
+1. Let $\mathcal{M}_0$ denote the *null model*, which contains no predictors. This model simply predicts the sample mean for each observation.
+
+2. For $k=1,2,\ldots,p$:
+
+\quad    a). Fit all $C_p^k$ models that contain exactly $k$ predictors
+
+\quad    b). Pick the best among these $C_p^k$ models, and call it $\mathcal{M}_k$. Here *best* is defined as having the smallest RSS, or equivalently largest $R^2$.
+    
+3. Select a single best model from among $\mathcal{M}_0,\ldots,\mathcal{M}_p$ using cross-validation, AIC($C_p$), BIC, or adjusted $R^2$.
+---------------------------------------------------------------
+
+```{r, fig.height=4, fig.width=9, fig.cap="For the Hitters data set, three quantities are displayed for the best model containing d predictors for d ranging from 1 to 19."}
+library(leaps)
+library(ISLR)
+
+data(Hitters)
+
+Hitters <- Hitters %>% na.omit()
+#AIC
+reg.full <- regsubsets(Salary~., data=Hitters, nvmax = 19)
+summary.full <- summary(reg.full)
+
+
+tibble(
+  x = 1:19,
+  `Cp (AIC)` = summary.full$cp,
+  BIC = summary.full$bic,
+  RSS = summary.full$rss
+) %>% 
+  gather(key, value, -x) %>% 
+  ggplot(aes(x, value)) + geom_point() + geom_line() + 
+  facet_wrap(~key, scales = "free_y")
+
+```
+
+## Forward and Backward Stepwise Selection
+
+Rather than search through all possible subsets (which becomes infeasible for $p$ much larger than 40), we can seek a good path trough them.
+
+---------------------------------------------------------------
+**Algorithm**  *Forward stepwise selection*
+---------------------------------------------------------------
+1. Let $\mathcal{M}_0$ denote the *null model*, which contains no predictors.
+
+2. For $k=0,1,\ldots,p-1$:
+
+\quad    a). Consider all $p-k$ models that augment the predictors in $\mathcal{M}_k$ with one additional predictor.
+
+\quad    b). Choose the *best* among these $p-k$ models, and call it $\mathcal{M}_{k+1}$. Here *best* is defined as having smallest RSS or highest $R^2$.
+    
+3. Select a single best model from among $\mathcal{M}_0,\ldots,\mathcal{M}_p$ using cross-validation, AIC($C_p$), BIC, or adjusted $R^2$.
+---------------------------------------------------------------
+
+---------------------------------------------------------------
+**Algorithm**  *Backward stepwise selection*
+---------------------------------------------------------------
+1. Let $\mathcal{M}_p$ denote the *full model*, which contains all $p$ predictors.
+
+2. For $k=p,p-1,\ldots,1$:
+
+\quad    a). Consider all $k$ models that contain all but one of the predictors in $\mathcal{M}_k$, for a total of $k-1$ predictors.
+
+\quad    b). Choose the *best* among these $k$ models, and call it $\mathcal{M}_{k-1}$. Here *best* is defined as having smallest RSS or highest $R^2$.
+    
+3. Select a single best model from among $\mathcal{M}_0,\ldots,\mathcal{M}_p$ using cross-validation, AIC($C_p$), BIC, or adjusted $R^2$.
+---------------------------------------------------------------
+
+Forward and Backward stepwise selection is a *greedy algorithm*, producing a nested sequence of models. In this sense it might seem *sub-optimal* compared to best-subset election. However, there are several reasons why it might be preferred:
+
+- *Computational*: for large $p$ we cannot compute the best subset sequence, but we can always compute the forward stepwise sequence (even when $p\gg N$) ^[Backward selection can only be used when $p<N$, while forward stepwise can always be used.]
+- *Statistical*: forward and backward stepwise is a *more constrained* search, and will have low variance, but perhaps more bias.
+
+```{r}
+tibble(
+  method = c("exhaustive", "forward", "backward")
+) %>% 
+  mutate(
+    model = method %>% 
+      map(~regsubsets(Salary~., data=Hitters, nvmax = 19, method = .)) %>% 
+      map(summary),
+    Cp = model %>% map("cp"),
+    BIC = model %>% map("bic"),
+    vars = Cp %>% map(~1:19)
+  ) %>% 
+  unnest(Cp, BIC, vars) %>% 
+  gather(key, value, Cp, BIC) %>% 
+  ggplot(aes(x = vars, y = value)) + geom_line() + geom_point() +
+  facet_grid(key~method, scales = "free_y") +
+  labs(x = "", y = "")
+
+```
+
+
+
+# Shrinkage Methods
+
+By retaining a subset of the predictors and discarding the rest, subset selection produces a model that is *interpretable* and possibly lower prediction error than the full model.
+
+However, because it is a discrete process --- variables are either retained or discarded -- it often exhibits high variance, and so doesn't reduce the prediction error of the full model.
+
+Shrinkage methods are more continous, and don't suffer as much from high variability.
+
+## Ridge Regression
+
+Ridge regression shrinks the regression coefficients by imposing a penalty on their size.
+
+- Least squares estimate
+$$
+RSS=\sum_{i=1}^n\left(y_i-\beta_0-\sum_{j=1}^p\beta_jx_{ij}\right)^2.
+$$
+- *Ridge regression*
+    $$
+    \sum_{i=1}^n\left(y_i-\beta_0-\sum_{j=1}^p\beta_jx_{ij}\right)^2+\lambda\sum_{j=1}^p\beta_j^2=RSS+\lambda\sum_{j=1}^p\beta_j^2,
+    $$
+    where $\lambda\geq0$ is a *tuning parameter*, to be determined separately.
+    
+      - $\lambda\sum_{j=1}^p\beta_j^2$, called a *shrinkage penalty*, it has the effect of *shrinking* the estimates of $\beta_j$ towards zero
+      - when $\lambda=0$, the penalty term has no effect.
+      - when $\lambda\to\infty$, $\beta_j=0$, $j=1, 2, \ldots, p$.
+
+An equivalent way to write the ridge problem is 
+$$
+\begin{split}
+\hat\beta^{ridge}&=arg\min_{\beta}\sum_{i=1}^N(y_i-\beta_0-\sum_{j=1}^px_{ij}\beta_j)^2,\\
+&\mathrm{subject~to} \sum_{j=1}^p\beta_j^2\leq t.
+\end{split}
+$$
+
+## The Lasso
+
+The penalty $\lambda\sum\beta_j^2$ will shrink all of the coefficients towards zero, but it **will not set any of them exactl to zero** (unless $\lambda=\infty$)
+
+This may not be a problem for prediction accuracy, but it can create a challenge in model interpretation in settings in which the number of variables $p$ is quite large.
+
+The *lasso*:
+$$
+\sum_{i=1}^n\left(y_i-\beta_0-\sum_{j=1}^p\beta_jx_{ij}\right)^2+\lambda\sum_{j=1}^p|\beta_j|=RSS+\lambda\sum_{j=1}^p|\beta_j|.
+$$
+
+- the $L_1$ penalty has the effect of forcing some of the coefficient estimates to **be exactly equal to zero** when the tuning parameter $\lambda$ is sufficiently large.
+- the lasso performs *variable selection* (the lasso yields *sparse* models)
+
+An equivalent way to write the lasso problem is
+$$
+\begin{split}
+\hat\beta^{lasso}&=arg\min_{\beta}\sum_{i=1}^N(y_i-\beta_0-\sum_{j=1}^px_{ij}\beta_j)^2,\\
+&\mathrm{subject~to} \sum_{j=1}^p|\beta_j|\leq t.
+\end{split}
+$$
+
+## Example
+
+```{r, fig.height=4, fig.width=5, warning=FALSE, message=FALSE}
+set.seed(1)
+library(rsample)
+library(glmnetUtils)
+
+Hitters <- Hitters %>% initial_split(prop = 0.7)
+
+#1. ridge 
+ridge_fit <- glmnet(Salary ~ ., data = training(Hitters), alpha = 0)
+
+plot(ridge_fit, xvar = "lambda")
+
+ridge_cv <- cv.glmnet(Salary ~ ., data = training(Hitters), alpha = 0)
+
+ridge_pred <- predict(ridge_fit, testing(Hitters), s = ridge_cv$lambda.min)
+#test mse for ridge
+mse(testing(Hitters) %>% pull(Salary), ridge_pred)
+
+
+#2. lasso
+lasso_fit <- glmnet(Salary ~ ., data = training(Hitters), alpha = 1)
+
+plot(lasso_fit, xvar = "lambda")
+
+lasso_cv <- cv.glmnet(Salary ~ ., data = training(Hitters), alpha = 1)
+
+lasso_pred <- predict(lasso_fit, testing(Hitters), s = lasso_cv$lambda.min)
+#test mse for lasso
+mse(testing(Hitters) %>% pull(Salary), lasso_pred)
+
+
+#3. best subset selection
+
+subsets_fit <- regsubsets(Salary ~ ., data = training(Hitters))
+
+subsets_fit %>% summary %>% .$cp %>% which.min
+
+coef(subsets_fit, id = 8)
+
+subsets_pred <- lm(Salary ~ Walks + CAtBat + CHits + CHmRun + Division + PutOuts, 
+                   data = training(Hitters)) %>%
+  predict(newdata = testing(Hitters))
+
+#test mse for best subset
+mse(testing(Hitters) %>% pull(Salary), subsets_pred)
+
+
+#4. elastic net
+cva <- cva.glmnet(Salary ~., data = training(Hitters))
+
+tibble(
+  alpha = cva$alpha,
+  lambda = cva$modlist %>% map_dbl("lambda.min")
+) %>% 
+  mutate(
+    model = alpha %>% map(~glmnet(Salary ~., data = training(Hitters), alpha = .)),
+    pred = map2(model, lambda, ~predict(.x, testing(Hitters), s = .y)),
+    mse = pred %>% map_dbl(~mean((testing(Hitters) %>% .$Salary - .x)^2))
+  ) %>% 
+  ggplot(aes(alpha, mse)) + geom_line() + geom_point()
+
+```
+
+# Discussion: Subset Selection, Ridge Regression and the Lasso
+
+\begin{table}[htbp]
+\caption{In the case of an orthonormal input matrix $X$ the three procedures have explicit solutions. Each method applys a simple transformation to the least squares estimate $\hat\beta_j$.}
+\begin{tabular}{ll}
+\hline
+Estimator & Formula\\
+\hline
+Best subset (size $M$) & $\hat\beta_j\cdot I(|\hat\beta_j|\geq|\hat\beta_{(M)})$\\
+Ridge & $\hat\beta_j/(1+\lambda)$\\
+Lasso & $\mathrm{sign}(\hat\beta_j)(|\hat\beta_j|-\lambda)_+$\\
+\hline
+\end{tabular}
+\end{table}
+
+- Best subset selection drops all variables with coefficient smaller than the $M$th largest. This is a form of ``hard-thresholding''
+- Ridge regression does a proportional shinkage
+- Lasso translates each coefficient by a constant factor $\lambda$, *truncating* at zero. This is called ``soft thresholding''
+```{r, echo=FALSE, fig.height=4, fig.width=9}
+par(mfrow=c(1,3))
+x <- seq(-5, 5, by=0.1)
+plot(x, x, type="l", axes = F, xlab="", ylab="", main="Best Subset", lwd=2, col="gray")
+abline(h=0, col="gray")
+abline(v=0, col="gray")
+lines(rep(2,5), seq(0,2,length=5), lty=2, lwd=2, col="blue")
+lines(rep(-2,5), seq(0,-2,length=5), lty=2, lwd=2, col="blue")
+lines(seq(-2, 2, length=10), rep(0,10), lty=2, lwd=2, col="blue")
+lines(seq(2, 5, length=10), seq(2, 5, length=10), lty=2, lwd=2, col="blue")
+lines(seq(-2, -5, length=10), seq(-2, -5, length=10), lty=2, lwd=2, col="blue")
+text(1,0,pos = 1, labels = "(0,0)")
+text(2, 0.5, pos = 4, labels = expression(hat(beta)[(M)]))
+
+plot(x, x, type="l", axes = F, xlab="", ylab="", main="Ridge", lwd=2, col="gray")
+abline(h=0, col="gray")
+abline(v=0, col="gray")
+lines(x, 0.8*x, lty=2, lwd=2, col="blue")
+text(1,0,pos = 1, labels = "(0,0)")
+
+plot(x, x, type="l", axes = F, xlab="", ylab="", main="Lasso", lwd=2, col="gray")
+abline(h=0, col="gray")
+abline(v=0, col="gray")
+lines(seq(-2,2,length=10), rep(0,10), lty=2, lwd=2, col="blue")
+lines(seq(2,5,length=10), seq(0,3,length=10), lwd=2, lty=2, col="blue")
+lines(seq(-2,-5,length=10), seq(0,-3,length=10), lwd=2, lty=2, col="blue")
+text(1,0,pos = 1, labels = "(0,0)")
+lines(rep(4,5), seq(2,4,length=5), lty=2)
+text(3.8, 3.2, pos = 4, labels = expression(lambda))
+```
+
+\begin{figure}
+\caption{Estimation picture for the lasso(left) and ridge regression (right). Shown are contours of the error and constraint functions. The solid blue areas are the constraint regions $|\beta_1|+|\beta_2|\leq t$ and $\beta_1^2+\beta_2^2\leq t^2$, respectively, while the red ellipses are the contours of the least squares error functions.}
+\includegraphics[width=0.8\textwidth]{./data/ridge_lasso.pdf}
+\end{figure}
+
+We can generalize ridge regression and the lasso:
+$$
+\hat\beta=arg\min_{\beta}\left\{\sum_{i=1}^N(y_i-\beta_0-\sum_{j=1}^p x_{ij}\beta_j)^2+\lambda\sum_{j=1}^p|\beta_j|^q \right\}
+$$
+
+```{r, echo=FALSE, fig.height=2, fig.width=9, fig.cap="Contours of constant values of $\\sum_j|\\beta_j|^q$ for given values if $q$"}
+par(mfrow=c(1, 5))
+x <- c(seq(-1,-0.05, length=50), seq(-0.05,0.05, length=10000), seq(0.05, 1, length=50))
+fun <- function(x,q)
+  {
+    return((1-abs(x)^q)^(1/q))
+  }
+myplot <- function(q)
+  {
+    plot(x, fun(x,q), type="l", xlim=c(-1.2,1.2), ylim=c(-1.2, 1.2), lwd=3, col="lightblue", xlab="", ylab="", main=paste("q=",q), axes = F)
+    lines(x, -fun(x,q), type="l", lwd=3, col="lightblue")
+    box()
+  }
+
+myplot(4)
+myplot(2)
+myplot(1)
+myplot(0.5)
+myplot(0.3)
+```
+
+- The value $q=0$ correspnds to variable subset selection, as the penalty simply counts the number of nonzero parameters.
+- The case $q=1$ (lasso) is the smallest $q$ such that the constraint region is *convex*; non-convex constraint regions make the optimization problem more difficult.
+
+
+
+# Dimension Reduction Methods
+
+The methods that we have discussed so far in this chapter have controlled variance in two different ways
+
+- using a subset of the original variables
+- by shrinking their coefficients toward zero
+
+Both of these methods are defined using the original predictors, $X_1, X_2, \ldots, X_p$.
+
+We now explore a class of approaches that *transform the predictors* and then fit a least squares model using the transformed variables. We will refer to these techniques as *dimension reduction methods*.
+
+Let $Z_1,Z_2,\ldots,Z_M$ represent $M$ ($<p$) *linear combinations* of our original $p$ predictors. That is,
+$$
+Z_m=\sum_{j=1}^p\phi_{jm}X_j,
+$$
+for some constants $\phi_{1m},\phi_{2m},\ldots,\phi_{pm}$, $m=1,\ldots,M$.
+We can then fit the linear regression model
+$$
+y_i=\theta_0+\sum_{m=1}^M\theta_m z_{im}+\epsilon_i, \qquad i=1,\ldots,n. 
+$$
+
+- If the constants $\phi_{1m}, \phi_{2m}, \ldots, \phi_{pm}$ are chosen wisely, the such dimension reduction approaches can often outperform least squares regression.
+- Dimension reduction serves to contrain the estimated $\beta_j$ coefficients:^[This constraint on the form of the coefficients has the potential to bias the coefficient estimates. However, in situations where $p$ is large relative to $n$, selecting a value of $M\ll p$ can significantly reduce the variance of the fitted coefficients.]
+    $$
+    \beta_j=\sum_{m=1}^M\theta_m\phi_{jm}
+    $$
+    where $y_i=\beta_0+\sum_{i=1}^p\beta_jx_{ij}+\epsilon_i$.
+    
+
+## Principal Components Regression
+
+*Principal components analysis* (PCA) is a popular approach for deriving a low-dimensional set of features from a large set of variables.
+
+PCA is a technique for reducing the dimension of a $n\times p$ data matrix $X$. The *first principle component* direction^[It can be computed by the eigen vector of the covariance matrix of $X$.] of the data is that along which the observations *vary the most*. 
+
+```{r, fig.height=5, fig.width=6, echo=F}
+library(mnormt)
+set.seed(1)
+x <- rmnorm(20, varcov = matrix(c(1,1.5,1.5,4), nrow=2))
+y <- x%*%c(1,2)+rnorm(20)
+
+x.mean <- apply(x,2,mean)
+x.sd <- apply(x,2,sd)
+s <- svd(scale(x))
+
+plot(x,pch=20, xlab="x1", ylab="x2", asp = 1, col="purple")
+
+arrows(x.mean[1]-5*s$v[1,1],x.mean[2]-5*s$v[2,1], x.mean[1]+5*s$v[1,1],x.mean[2]+5*s$v[2,1], lwd=2, col="green")
+arrows(x.mean[1]-2*s$v[1,2],x.mean[2]-2*s$v[2,2], x.mean[1]+2*s$v[1,2],x.mean[2]+2*s$v[2,2], lwd=2, col="orange")
+legend("topleft", col=c("green", "orange"), legend = c("1st principal component", "2nd principal component"), lty = c(1,1))
+
+f <- function(mean, v, x)
+{
+  x0<-x[1]
+  y0<-x[2]
+  b <- v[2]/v[1]
+  a <- mean[2]-mean[1]*b
+  newx <- (x0+b*y0-a*b)/(1+b^2)
+  newy <- a+b*newx
+  return(c(newx, newy))
+}
+
+for(i in 1:nrow(x))
+  {
+    t <- f(x.mean, s$v[,1], x[i,])
+    points(t[1],t[2], pch="+")
+    segments(x[i,1], x[i,2], t[1], t[2], lty=2, col="red")
+  }
+```
+
+
+```{r, fig.height=4, fig.width=5}
+library(pls)
+
+pcr.fit <- pcr(Salary ~ . - League - Division - NewLeague, 
+               data=training(Hitters), scale =T)
+
+tibble(
+  comp = 1:16
+) %>% 
+  mutate(
+    pred = comp %>% map(~predict(pcr.fit, testing(Hitters), .)),
+    mse = pred %>% map_dbl(~mse(testing(Hitters) %>% pull(Salary), .))
+  ) %>% 
+  ggplot(aes(comp, mse)) + geom_line() + geom_point()
+```
+
+#Example: PCA on Face Feature Selection
+
+```{r, fig.width=8, fig.height=3, fig.cap="3 faces saved by $96\\times96$ pixels."}
+load("data/face.Rd")
+par(mfrow=c(1,3))
+for(i in 1:3)
+  {
+    im <- matrix(data=rev(im.train[i,]), nrow=96, ncol=96)
+    image(1:96, 1:96, im, col=gray((0:255)/255))
+  }
+
+pc <- svd(scale(im.train))
+eig.perc <- cumsum((pc$d)^2)/sum((pc$d)^2)
+eig.perc[1:10]
+```
+
+
+```{r, echo=FALSE, fig.width=8, fig.height=9, fig.cap="Top: 3 faces with the 1st principle component; Middle: 3 faces with first 10 principle components; Bottom: 3 faces with first 200 principle components."}
+par(mfrow=c(3,3))
+im.pc1 <- pc$u[,1]%*%matrix(pc$d[1])%*%t(pc$v[,1])
+for(i in 1:3)
+  {
+    im <- matrix(data=rev(im.pc1[i,]), nrow=96, ncol=96)
+    image(1:96, 1:96, im, col=gray((0:255)/255))
+  }
+
+im.pc10 <- pc$u[,1:10]%*%diag(pc$d[1:10])%*%t(pc$v[,1:10])
+for(i in 1:3)
+  {
+    im <- matrix(data=rev(im.pc10[i,]), nrow=96, ncol=96)
+    image(1:96, 1:96, im, col=gray((0:255)/255))
+  }
+
+im.pc200 <- pc$u[,1:200]%*%diag(pc$d[1:200])%*%t(pc$v[,1:200])
+for(i in 1:3)
+  {
+    im <- matrix(data=rev(im.pc200[i,]), nrow=96, ncol=96)
+    image(1:96, 1:96, im, col=gray((0:255)/255))
+  }
+```
